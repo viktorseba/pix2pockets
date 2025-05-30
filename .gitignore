@@ -1,12 +1,10 @@
 # Ignore large files
 *.npy
 *.zip
-*.png
+
 *.jpg
 *.log
 *.pt
-
-states/
 Doublecam_dataset/
 dataset155/
 
