@@ -1,0 +1,16 @@
+# Ignore large files
+*.npy
+*.zip
+*.png
+*.jpg
+*.log
+*.pt
+
+states/
+Doublecam_dataset/
+dataset155/
+
+# Ignore system files
+.DS_Store
+__pycache__/
+.env
