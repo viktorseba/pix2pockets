@@ -5,8 +5,13 @@
 *.jpg
 *.log
 *.pt
+
+# Dataset directories
 Doublecam_dataset/
 dataset155/
+
+# Ignore model checkpoints
+RL_models/
 
 # Ignore system files
 .DS_Store
