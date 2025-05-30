@@ -185,7 +185,7 @@ def hest(q1,q2,normalize=False):
 #%% 
 
 class HomographyMapping:
-    def __init__(self, label, data, thres, im, ball_data, datanum):
+    def __init__(self, label, data, thres, im, ball_data, datanum, savepath):
         self.label = label          # for frontview, t for topview, 45 for 45 degree view Used for plotting only
         self.data = data            # dot data
         self.thres = thres          # threshold for ransac
@@ -205,7 +205,7 @@ class HomographyMapping:
                      min(data[:,1])-(bbox_h*bound),
                      max(data[:,1])+(bbox_h*bound)]
 
-        self.savepath = 'im_export_new/'
+        self.savepath = savepath
         self.usedots = True # if False, only corners are used for mapping
         self.final_dist_error = None
 
