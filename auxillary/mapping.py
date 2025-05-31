@@ -13,6 +13,7 @@ import sklearn
 import scipy as sp
 import os
 from tqdm import tqdm
+import copy
 
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
 
@@ -447,13 +448,13 @@ class HomographyMapping:
             for i in range(3):
                 dots_template.append([Cx-h2,Cy+(i-1)*space])
         
-        cornerpoints_template = [[Cx-h2,Cy+h1],[Cx-h2,Cy-h1],[Cx+h2,Cy+h1],[Cx+h2,Cy-h1]]
+        self.cornerpoints_template = [[Cx-h2,Cy+h1],[Cx-h2,Cy-h1],[Cx+h2,Cy+h1],[Cx+h2,Cy-h1]]
         
-        cornerpoints_template = np.array(cornerpoints_template)
+        self.cornerpoints_template = np.array(self.cornerpoints_template)
         dots_template = np.array(dots_template)
         
-        if self.usedots: self.template_points = np.vstack((dots_template,cornerpoints_template))
-        else: self.template_points = cornerpoints_template
+        if self.usedots: self.template_points = np.vstack((dots_template,self.cornerpoints_template))
+        else: self.template_points = self.cornerpoints_template
         
         self.template_points = np.array([[i[0]+500,i[1]+500] for i in self.template_points])
 
@@ -466,13 +467,14 @@ class HomographyMapping:
         
         tform = transform.ProjectiveTransform(self.H)
         
-        if len(self.ball_data[0]) > 2: 
-            if self.label != "t": # used to do positioning of ballcenter of ball angleratio
-                self.ball_centers = np.array([[b[0]+(b[2]/2),b[1]+(b[3])/angleratio] for b in self.ball_data])
-            else:
-                self.ball_centers = np.array([[b[0]+(b[2]/2),b[1]+(b[3]/2)] for b in self.ball_data])
-        else: 
-            self.ball_centers = np.array([[b[0],b[1]] for b in self.ball_data])
+        # if len(self.ball_data[0]) > 2: 
+        #     if self.label != "t": # used to do positioning of ballcenter of ball angleratio
+        #         self.ball_centers = np.array([[b[0]+(b[2]/2),b[1]+(b[3])/angleratio] for b in self.ball_data])
+        #     else:
+        #         self.ball_centers = np.array([[b[0]+(b[2]/2),b[1]+(b[3]/2)] for b in self.ball_data])
+        # else: 
+        self.ball_centers = np.array([[b[0],b[1]] for b in self.ball_data])
+        self.ball_classes = self.ball_data[:, -1] + 1
         
         self.ball_H = tform(self.ball_centers)
         
@@ -542,7 +544,7 @@ class HomographyMapping:
         fig.tight_layout()
 
         if save: 
-            fig.savefig(self.savepath+f'lines_{self.datanum}{self.label}.png', bbox_inches='tight',dpi=200)
+            fig.savefig(self.savepath/f'lines_{self.datanum}{self.label}.png', bbox_inches='tight',dpi=200)
         # plt.show()
         # plt.close()
     
@@ -565,7 +567,7 @@ class HomographyMapping:
             ax2[1].annotate(' '+str(i), (self.found_points[i,0], self.found_points[i,1]))
         
         if save: 
-            plt.savefig(self.savepath+f'template_{self.datanum}{self.label}.png', bbox_inches='tight',dpi=200)
+            plt.savefig(self.savepath/f'template_{self.datanum}{self.label}.png', bbox_inches='tight',dpi=200)
         # plt.show()
         # plt.close()
             
@@ -710,13 +712,28 @@ class HomographyMapping:
             # fig3.tight_layout()
             
             if save: 
-                if self.final_dist_error > 1:
-                    self.savepath+='errors/'
-                plt.savefig(self.savepath+f'shift_{self.label}_{self.final_dist_error}.png', bbox_inches='tight',dpi=200)
+                # if self.final_dist_error > 1:
+                #     self.savepath+='errors/'
+                plt.savefig(self.savepath/f'shift_{self.label}_{self.final_dist_error}.png', bbox_inches='tight',dpi=200)
             
             plt.show()
             plt.close()
 
     def extract_things_we_might_need(self):
         return self.H, self.template_points, self.found_points, self.ball_H, self.final_dist_error, self.viewtype, self.warpedim
+    
+    def to_RL(self):
+        x_min, x_max = np.min(self.template_points[:,0]), np.max(self.template_points[:, 0])
+        y_min, y_max = np.min(self.template_points[:,1]), np.max(self.template_points[:, 1])
+        
+        rl_balls = np.zeros_like(self.ball_H)
+        rl_balls[:, 0] = (self.ball_H[:, 0] - x_min) / (x_max - x_min)
+        rl_balls[:, 1] = 1.0 - (self.ball_H[:, 1] - y_min) / (y_max - y_min)  # mirror y
+        
+        rl_balls = np.hstack((rl_balls, self.ball_classes[:, None]))
+        
+        if 3 not in self.ball_classes:
+            print("Found no cue balls. RL part wont work properly.")
+            
+        return rl_balls
 

@@ -11,7 +11,7 @@ import numpy as np
 # import matplotlib.pyplot as plt
 # from config_env import lx, ux, ly, uy, BALL_RADIUS
 
-from RL_Pool_env3 import PoolEnv
+from auxillary.RL_Pool_env3 import PoolEnv
 from sb3_contrib.common.wrappers import ActionMasker
 from sb3_contrib.ppo_mask import MaskablePPO
 import gymnasium as gym

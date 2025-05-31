@@ -16,7 +16,7 @@ import cv2
 import math
 import sys
 from gymnasium import spaces
-from RL_config_env import *
+from auxillary.RL_config_env import *
 import matplotlib.pyplot as plt
 import time
 from copy import copy
@@ -519,6 +519,7 @@ class PoolEnv(gym.Env):
         
         b_number = 0
 
+        # 1: Stripe, 2: Solid, 3: Cue, 4: Black
         if self.game_type == 'normal' and self.num_balls > 2:
             ball_classes = ([1] * amount_solids) + [4] * (self.num_balls > 1) + ([2] * amount_stripes) + [3]
         else:
@@ -565,6 +566,9 @@ class PoolEnv(gym.Env):
                                           int((UPPER_Y - LOWER_Y - 2)*y + LOWER_Y) + 1
                                           ]
                     ballclass = int(self.balls_init[i, 2, self.random_state])
+                
+                else:
+                    print(f"Unexpected shape of balls_init! Got shape: {self.balls_init.shape}")
 
             else:
                 # Random position
@@ -1203,7 +1207,6 @@ class PoolEnv(gym.Env):
         else:
             # hit_vectors, thetas = zip(*self.hit_points)
             # self.best_shot = hit_vectors[np.argmin(thetas)] - cue_pos
-            
             self.best_shot, best, self.best_score = self.best_shot_criteria(all_vectors)
             # self.draw_stuff["hit_points_best"] = self.draw_stuff["hit_points"][best]
             # self.draw_stuff["draw_hit_points"] = True
@@ -1370,7 +1373,6 @@ class PoolEnv(gym.Env):
         self.window_vectors = []
         self.prev_pocketed_balls = []
         
-
         # self.actions = [[0, 0]]
         # ======== SETUP TRACKING ======== #
         # print(f"Current suit: {self.suit}")

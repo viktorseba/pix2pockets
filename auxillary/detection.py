@@ -433,7 +433,7 @@ def table_analysis(im_paths, label_paths, model, data_name=None):
     
     return (table_ratio, perf)
 
-def load_dataset(dataset_name, folder_type='test', weight_name=None):
+def load_dataset(dataset_name, weight_path, folder_type='train'):
     """
 
     Parameters
@@ -457,54 +457,28 @@ def load_dataset(dataset_name, folder_type='test', weight_name=None):
         dataset//folder_type//labels folder.
 
     """
-    weight_path = None
     for filename in os.listdir(dataset_name):
-        
-        # find weight
-        if filename[-3:] == '.pt':
-            if weight_name is None: 
-                weight_path = os.path.join(dataset_name, filename)
-            elif filename[:-3] == weight_name:
-                weight_path = os.path.join(dataset_name, filename)
-            
-                
-        
-        # print(weight_path)
-        # find type folder
         if filename == folder_type:
-            im_folder = os.path.join(dataset_name, folder_type, 'images')
-            label_folder = os.path.join(dataset_name, folder_type, 'labels')
-
-        #print(filename)
-    if weight_path is None:
-        return print(f"No weight was found with filename {weight_name}")
+            im_folder = dataset_name / folder_type / 'images'
+            label_folder = dataset_name / folder_type / 'labels'
+            # label_folder = os.path.join(dataset_name, folder_type, 'labels')
     
     im_paths = []
     for filename in sorted(os.listdir(im_folder), key=len):
         #print(os.path.join(im_folder, filename))
-        im_paths.append(os.path.join(im_folder, filename))
-
+        # im_paths.append(os.path.join(im_folder, filename))
+        im_paths.append(im_folder / filename)
 
     label_paths = []
     for filename in sorted(os.listdir(label_folder), key=len):
         #print(os.path.join(label_folder, filename))
-        label_paths.append(os.path.join(label_folder, filename))
+        # label_paths.append(os.path.join(label_folder, filename))
+        label_paths.append(label_folder / filename)
         
-    print(f"Found weight path: {weight_path}")
     # model = torch.hub.load(yolo_path, 'custom', path=weight_path, source='local')
     model = torch.hub.load("ultralytics/yolov5", "custom", path=weight_path)  # local model
     model.eval()
-    
-
-
-    # accomodate windows and mac differences
-    if '\\' in dataset_name:
-        name = dataset_name.split('\\')[-1]
-    else:
-        name = dataset_name.split('/')[-1]
-    
-    # %matplotlib inline
-    return model, im_paths, label_paths, name
+    return model, im_paths, label_paths
     
 
 def set_im_and_label_paths_to_all(folder_to_all_ims):
@@ -625,7 +599,7 @@ def helper_plot_bbox(ax, boxes, valid_classes, colors, kind="detection"):
     return classes, class_count
 
 def plot_bboxes(im, label, detection, 
-                im_idx=None, data_name=None, 
+                im_idx=None, 
                 classes_to_plot=['Striped', 'Solid', 'Cue', 'Black', 'Dot'], 
                 title_names=['Ground Truth', 'Detection'], 
                 legend=True, save_path=None, show_axes=False):
@@ -673,8 +647,8 @@ def plot_bboxes(im, label, detection,
                   # fancybox=True, ncol=len(artist))
         if legend: fig.legend(loc='center', handles=artist, bbox_to_anchor=(1, 0.5), prop={"size": 10})
     
-    if (data_name is not None) or (im_idx is not None):
-        fig.suptitle(f'Bounding boxes for image {im_idx} in dataset {data_name}')
+    if (im_idx is not None):
+        fig.suptitle(f'Bounding boxes for image {im_idx}')
         
     fig.tight_layout()
     if save_path is not None:
