@@ -558,7 +558,53 @@ class HomographyMapping:
             plt.savefig(self.savepath/f'template_{self.viewtype}.png', bbox_inches='tight',dpi=200)
         # plt.show()
         # plt.close()
+
+    def plot_warped(self, ignoreclasses=True, save=True):
+        
+        fig3, ax3 = plt.subplots(1,1,figsize=(10,10))
+        # ax3 = [plt.subplots(1,1,figsize=(10,10))[1],plt.subplots(1,1,figsize=(6,6))[1]]
+        ax3.set_title('Warped positions using points')
+        
+        ballsize = 140 # 4000
+        dotsize= 35
+        refsize = 150
+        
+        x1=min(self.H_dots[:,0])-20
+        x2=max(self.H_dots[:,0])+20
+        y1=min(self.H_dots[:,1])-20
+        y2=max(self.H_dots[:,1])+20    
             
+
+        ax3.imshow(self.warpedim) # ,cmap=plt.cm.gray
+        ax3.add_patch(Rectangle((x1,y1),x2-x1,y2-y1,color='w',alpha=0.5))
+            
+        ax3.scatter(self.H_dots[-4,0], self.H_dots[-4,1],s=refsize, color='r',marker="+",zorder=3,label='reference mark')
+        
+        # TODO: make this work with classes (get rid or ignoreclasses)
+        if ignoreclasses or self.ball_classes == []:
+            ax3.scatter(self.ball_H[:,0], self.ball_H[:,1], s=ballsize, linewidth=4,facecolors='none', edgecolors='m',label='projected balls')
+        
+        else:
+            classcolors = [(0,0,1),(0,1,0),(1,0,0),(0,1,1)]
+            
+            for ball in range(len(self.ball_centers)): # facecolors='none', edgecolors
+                ax3.scatter(self.ball_H[ball,0], self.ball_H[ball,1], s=ballsize, facecolors='none',edgecolors=classcolors[int(self.ball_classes[ball])])
+        
+        ax3.scatter(self.H_dots[:-4,0], self.H_dots[:-4,1], s=dotsize, color='grey',zorder=1,label='projection points')
+        ax3.scatter(self.H_dots[-3:,0], self.H_dots[-3:,1], s=dotsize, color='grey',zorder=1)
+        
+        ax3.set_xlim(x1,x2) # see full table
+        ax3.set_ylim(y1,y2)
+        ax3.set_aspect('equal', adjustable='box')
+        
+        if save: 
+            # if self.final_dist_error > 1:
+            #     self.savepath+='errors/'
+            plt.savefig(self.savepath/f'shift_{self.viewtype}_{self.final_dist_error}.png', bbox_inches='tight',dpi=200)
+        
+        plt.show()
+        plt.close()
+
     def plot_compare2topview(self, obj2, ignoreclasses=True, save=True):
 
         compareballs = obj2.ball_H
@@ -709,11 +755,41 @@ class HomographyMapping:
             plt.show()
             plt.close()
 
-    def remove_pocketballs(self):
-        """
-        Removes pocketed balls from the ball data.
-        """
-        return self.cornerpoints_template
+    def remove_pocketed_balls(self, r=100):
+
+        x_min, x_max = self.template_points[:, 0].min(), self.template_points[:, 0].max()
+        y_min, y_max = self.template_points[:, 1].min(), self.template_points[:, 1].max()
+
+        x_center = (x_min + x_max) / 2.0
+        bottom_center = np.array([x_center, y_min])
+        top_center    = np.array([x_center, y_max])
+
+        exclusion_centers = np.vstack([
+            self.template_points,         # shape (4,2)
+            bottom_center[np.newaxis, :],  # shape (1,2)
+            top_center   [np.newaxis, :]   # shape (1,2)
+        ])  # final shape: (6,2)
+
+        # plt.scatter(points[:, 0], points[:, 1], c='r')
+        # plt.scatter(exclusion_centers[:, 0], exclusion_centers[:, 1], c='k')
+        # plt.show()
+
+        diffs = self.ball_H[:, np.newaxis, :] - exclusion_centers[np.newaxis, :, :]
+        d2    = np.sum(diffs**2, axis=2)   # shape (N,6) of squared distances
+
+        # 5) For each point (each row in d2), find the minimum squared‐distance to any of the 6 centers:
+        min_d2 = np.sqrt(d2.min(axis=1))  # shape (N,)
+
+        # print(min_d2)
+        mask = (min_d2 >= r)
+
+        # plt.scatter(points[mask][:, 0], points[mask][:, 1], c='r')
+        # plt.scatter(exclusion_centers[:, 0], exclusion_centers[:, 1], c='k')
+        # plt.show()
+
+        self.ball_H = self.ball_H[mask]
+        self.ball_classes = self.ball_classes[mask]
+        return mask
 
 
     def to_RL(self):
@@ -730,4 +806,72 @@ class HomographyMapping:
             print("Found no cue balls. RL part wont work properly.")
             
         return rl_balls
+
+
+    def get_observation(self):
+        
+        state = self.to_RL()
+        obs = np.array([[ball[0], ball[1], ball[2]/4] for ball in state])
+
+        balls_to_fill = 16 - len(obs)
+        if len(obs) == 0:
+            # if no balls on table
+            obs = (np.repeat(np.array([0, 0, 0]), balls_to_fill, axis=0).reshape(balls_to_fill, 3).flatten())
+        elif balls_to_fill > 0:
+            # if some balls are pocketed
+            obs = np.vstack((obs,
+                                np.repeat(np.array([0, 0, 0]), balls_to_fill, axis=0).reshape(balls_to_fill, 3),)
+                            ).flatten()
+        else:
+            obs = obs.flatten()
+
+        return obs
+
+    def get_action(self, model):
+        obs = self.get_observation()
+        action, _states = model.predict(obs, deterministic=True)
+        angle, force = action
+        angle = angle / 100 - 180
+        force = force / 29
+        return np.array([angle, force])
+
+    def RL_predict(self, model, save=True):
+        image = self.warpedim
+
+        cue_ball = self.ball_H[self.ball_classes == 3].flatten()
+
+        angle, force = self.get_action(model)
+
+        fig, ax = plt.subplots(1, 1, figsize=(12,12))
+        ax.imshow(image)
+        ax.axis('off')
+        
+        max_length = 100  # pxels
+        length = force * max_length
+        angle_rad = np.deg2rad(angle)
+
+        dx = length * np.cos(angle_rad)
+        dy = -length * np.sin(angle_rad)
+
+        ax.plot(*cue_ball, 'ro')
+        ax.arrow(*cue_ball, dx=dx, dy=dy, width=5, head_width=30, head_length=30, fc='blue', ec='black')
+
+        # Optional: axis settings
+        x1=min(self.H_dots[:,0])-20
+        x2=max(self.H_dots[:,0])+20
+        y1=min(self.H_dots[:,1])-20
+        y2=max(self.H_dots[:,1])+20 
+        
+        ax.set_xlim(x1,x2) # see full table
+        ax.set_ylim(y1,y2)
+
+        ax.set_aspect('equal', adjustable='box')
+
+        if save: 
+            # if self.final_dist_error > 1:
+            #     self.savepath+='errors/'
+            plt.savefig(self.savepath/f'predict_{self.viewtype}.png', bbox_inches='tight',dpi=200)
+        
+        plt.show()
+        plt.close()
 

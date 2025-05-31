@@ -283,72 +283,72 @@ def compare_post_process(im, label, detection, detection_post, im_idx=None, data
     plt.show()
     plt.close()
 
-def evaluate_batch(im_paths, label_paths, post_processing=False, plot=False, names=(), data_name = None):
-    """
+# def evaluate_batch(im_paths, label_paths, post_processing=False, plot=False, names=(), data_name = None):
+#     """
 
-    Parameters
-    ----------
-    im_paths : list 
-        list containing paths to individual images
+#     Parameters
+#     ----------
+#     im_paths : list 
+#         list containing paths to individual images
         
-    label_paths : list 
-        list containing paths to individual labels
-    plot : Bool, optional
-        Set to True if plots should be shown. The default is False.
-    names : Dict, optional
-        Dictionary of the classes in the dataset. The default is ().
+#     label_paths : list 
+#         list containing paths to individual labels
+#     plot : Bool, optional
+#         Set to True if plots should be shown. The default is False.
+#     names : Dict, optional
+#         Dictionary of the classes in the dataset. The default is ().
 
-    Returns
-    -------
-    list
-        mp, mr, map50, map, maps
-        mean precision, mean recall, mean average precision @ 0.5, mean average precision @ 0.5:0.95, mean average precision pr class
+#     Returns
+#     -------
+#     list
+#         mp, mr, map50, map, maps
+#         mean precision, mean recall, mean average precision @ 0.5, mean average precision @ 0.5:0.95, mean average precision pr class
 
-    """
-    if isinstance(im_paths, str) and isinstance(label_paths, str):
-        im_paths = [im_paths]
-        label_paths = [label_paths]
+#     """
+#     if isinstance(im_paths, str) and isinstance(label_paths, str):
+#         im_paths = [im_paths]
+#         label_paths = [label_paths]
     
-    if len(im_paths) != len(label_paths):
-        raise Exception("Number of images and labels do not match")
-    nc = 6
-    iouv = np.linspace(0.5, 0.95, 10) # iou values
-    stats = []
+#     if len(im_paths) != len(label_paths):
+#         raise Exception("Number of images and labels do not match")
+#     nc = 6
+#     iouv = np.linspace(0.5, 0.95, 10) # iou values
+#     stats = []
     
-    # Iterate through images
-    for im_path, label_path in tqdm(zip(im_paths, label_paths)):
+#     # Iterate through images
+#     for im_path, label_path in tqdm(zip(im_paths, label_paths)):
         
-        #print(im_path)
-        #print(label_path)
+#         #print(im_path)
+#         #print(label_path)
         
-        # Get image
-        im = cv2.imread(im_path)
-        im_size = im.shape[:2]
+#         # Get image
+#         im = cv2.imread(im_path)
+#         im_size = im.shape[:2]
         
-        # Get detection and labels
-        if post_processing: detections = get_detection(im_path, model)
-        else: detections = get_detection(im_path, model, post_process=False, conf_thresh=0, iou_thresh=0)
-        labels = get_label(label_path, im_size)
+#         # Get detection and labels
+#         if post_processing: detections = get_detection(im_path, model)
+#         else: detections = get_detection(im_path, model, post_process=False, conf_thresh=0, iou_thresh=0)
+#         labels = get_label(label_path, im_size)
         
-        # for each detection-label pair, compute 'correct'
-        correct = process_batch(detections, labels, iouv)
-        # append (correct, conf, pcls, tcls) to a 'stat' variable
-        stats.append([correct, detections[:, 4], detections[:, 5], labels[:, 0]])
+#         # for each detection-label pair, compute 'correct'
+#         correct = process_batch(detections, labels, iouv)
+#         # append (correct, conf, pcls, tcls) to a 'stat' variable
+#         stats.append([correct, detections[:, 4], detections[:, 5], labels[:, 0]])
     
-    # Now make sure stat is in the right format (list(4) (correct, conf, pcls, tcls))
-    stats = [np.concatenate(x, 0) for x in zip(*stats)]
-    tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats, plot=plot, names=names, data_name=data_name)
+#     # Now make sure stat is in the right format (list(4) (correct, conf, pcls, tcls))
+#     stats = [np.concatenate(x, 0) for x in zip(*stats)]
+#     tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats, plot=plot, names=names, data_name=data_name)
     
-    # return tp, fp, p, r, f1, ap, ap_class, stats
+#     # return tp, fp, p, r, f1, ap, ap_class, stats
 
-    ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
-    mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
+#     ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
+#     mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
     
     
-    maps = np.zeros(nc) + map
-    for i, c in enumerate(ap_class):
-        maps[c] = ap[i]
-    return [mp, mr, map50, map, maps], [tp, fp, p, r, f1, ap, ap_class]
+#     maps = np.zeros(nc) + map
+#     for i, c in enumerate(ap_class):
+#         maps[c] = ap[i]
+#     return [mp, mr, map50, map, maps], [tp, fp, p, r, f1, ap, ap_class]
  
     
 
