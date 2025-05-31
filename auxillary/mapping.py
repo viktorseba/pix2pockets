@@ -186,25 +186,27 @@ def hest(q1,q2,normalize=False):
 #%% 
 
 class HomographyMapping:
-    def __init__(self, label, data, thres, im, ball_data, datanum, savepath):
+    def __init__(self, label, detections, thres, im, datanum, savepath):
+
+        self.dot_data_org = detections[detections[:, 5]==4][:,0:2] # TODO: is the last bracket needed?
+        self.ball_data = detections[detections[:, 5]!=4]
+
         self.label = label          # for frontview, t for topview, 45 for 45 degree view Used for plotting only
-        self.data = data            # dot data
         self.thres = thres          # threshold for ransac
         self.im = im                # image to be transformed
-        self.ball_data = ball_data  # ball data
         self.datanum = datanum      # image index, used for saving files
 
         self.viewtype = 'UNKNOWN'
         self.h, self.w = self.im.shape[1],self.im.shape[0]
 
-        bbox_w = max(data[:,0]) - min(data[:,0])
-        bbox_h = max(data[:,1]) - min(data[:,1])
+        bbox_w = max(self.dot_data_org[:,0]) - min(self.dot_data_org[:,0])
+        bbox_h = max(self.dot_data_org[:,1]) - min(self.dot_data_org[:,1])
         
         bound = 0.5
-        self.bbox = [min(data[:,0])-(bbox_w*bound),
-                     max(data[:,0])+(bbox_w*bound),
-                     min(data[:,1])-(bbox_h*bound),
-                     max(data[:,1])+(bbox_h*bound)]
+        self.bbox = [min(self.dot_data_org[:,0])-(bbox_w*bound),
+                     max(self.dot_data_org[:,0])+(bbox_w*bound),
+                     min(self.dot_data_org[:,1])-(bbox_h*bound),
+                     max(self.dot_data_org[:,1])+(bbox_h*bound)]
 
         self.savepath = savepath
         self.usedots = True # if False, only corners are used for mapping
@@ -213,9 +215,12 @@ class HomographyMapping:
         self.colors = ['r','g','b','y']
         self.colorsExt = ['r','g','b','y','m','c']
 
+        self.extract_lines() # run main extraction always
+
+
     def extract_lines(self):
         self.lines = []
-        self.newdata = self.data.copy()
+        self.dot_Data = self.dot_data_org.copy()
         
         self.standard_line = np.arange(0, self.h)
         
@@ -225,22 +230,22 @@ class HomographyMapping:
         for k in range(4):
             # fit line using all data
             model = LineModelND()
-            model.estimate(self.newdata)
+            model.estimate(self.dot_Data)
             try: 
-                model_robust, inliers = ransac(self.newdata, LineModelND, min_samples=2, residual_threshold=self.thres, max_trials=1000)
+                model_robust, inliers = ransac(self.dot_Data, LineModelND, min_samples=2, residual_threshold=self.thres, max_trials=1000)
             except:
                 print('this should not happen, right??')
                 return None
 
             outliers = (inliers == False)
-            # stack = np.hstack((self.newdata[inliers],(np.ones(len(self.newdata[inliers]))*k).reshape(-1,1) ))
-            self.inlier_list.append(self.newdata[inliers])
+            # stack = np.hstack((self.dot_Data[inliers],(np.ones(len(self.dot_Data[inliers]))*k).reshape(-1,1) ))
+            self.inlier_list.append(self.dot_Data[inliers])
             self.inliercount = sum(inliers)
             
             # generate coordinates of estimated models
             line_y_robust = model_robust.predict_y(self.standard_line)
             self.lines.append(line_y_robust)
-            self.newdata = self.newdata[outliers]
+            self.dot_Data = self.dot_Data[outliers]
         
         slopes = [l[1]-l[0] for l in self.lines]
         # print(slopes)
@@ -522,7 +527,7 @@ class HomographyMapping:
                 ax[0].text(self.inlier_list[i][p,0], self.inlier_list[i][p,1], f'{p+num}', bbox = {'facecolor': 'oldlace', 'alpha': 1, 'boxstyle': "circle,pad=0.3", 'ec': self.colors[i]},zorder=3)
             num = len(self.inlier_list[i])+num+1
             
-        if len(self.newdata)>0 : ax[0].scatter(self.newdata[:,0], self.newdata[:,1], s=30, color='k', label=f'outliers: ({self.newdata.shape[0]})',zorder=2)
+        if len(self.dot_Data)>0 : ax[0].scatter(self.dot_Data[:,0], self.dot_Data[:,1], s=30, color='k', label=f'outliers: ({self.dot_Data.shape[0]})',zorder=2)
 
     # plot sorted dotpoints
         num = 0
@@ -571,7 +576,11 @@ class HomographyMapping:
         # plt.show()
         # plt.close()
             
-    def plot_compare2topview(self, compareballs, warpedim=None, classes=[], save=True):
+    def plot_compare2topview(self, obj2, ignoreclasses=True, save=True):
+
+        compareballs = obj2.ball_H
+        warpedim = obj2.warpedim
+
         dist_error = 0
 
         if warpedim is None:
@@ -630,12 +639,13 @@ class HomographyMapping:
                 ax3[0].scatter(self.inlier_list[k][:,0], self.inlier_list[k][:,1], s=60, facecolors='m', edgecolors='w',zorder=1)
                 ax3[0].scatter(self.intersections_sorted[k,0], self.intersections_sorted[k,1], s=60, facecolors='m', edgecolors='w',)
             
-            # if len(self.newdata)>0 : ax[0].scatter(self.newdata[:,0], self.newdata[:,1], s=dotsize, color='grey',zorder=2)
+            # if len(self.dot_Data)>0 : ax[0].scatter(self.dot_Data[:,0], self.dot_Data[:,1], s=dotsize, color='grey',zorder=2)
             
             ax3[1].scatter(self.H_dots[-4,0], self.H_dots[-4,1],s=refsize, color='r',marker="+",zorder=3,label='reference mark')
             
-            # print(classes)
-            if classes == []:
+            
+            # TODO: make this work with classes (get rid or ignoreclasses)
+            if ignoreclasses or self.ball_classes == []:
                 ax3[0].scatter(self.ball_centers[:,0], self.ball_centers[:,1], s=30, facecolors='y', edgecolors='k',label='found balls')
                 ax3[1].scatter(self.ball_H[:,0], self.ball_H[:,1], s=ballsize, linewidth=4,facecolors='none', edgecolors='m',label='projected balls')
             
@@ -644,7 +654,7 @@ class HomographyMapping:
                 
                 for ball in range(len(self.ball_centers)): # facecolors='none', edgecolors
                     # ax3[0].scatter(self.ball_centers[ball,0], self.ball_centers[ball,1], s=ballsize, facecolors='none', edgecolors=classcolors[int(classes[ball])])
-                    ax3[1].scatter(self.ball_H[ball,0], self.ball_H[ball,1], s=ballsize, facecolors='none',edgecolors=classcolors[int(classes[ball])])
+                    ax3[1].scatter(self.ball_H[ball,0], self.ball_H[ball,1], s=ballsize, facecolors='none',edgecolors=classcolors[int(self.ball_classes[ball])])
             
             
             ax3[1].scatter(self.H_dots[:-4,0], self.H_dots[:-4,1], s=dotsize, color='grey',zorder=1,label='projection points')
@@ -660,16 +670,16 @@ class HomographyMapping:
 
                 #dirty fix no 2:
                 #balls not ordered correctly
-                wrong = None
-                if self.datanum == 1: wrong = [9,10]
-                elif self.datanum == 23: wrong = [5,6]
-                elif self.datanum == 25: wrong = [12,13]
+                # wrong = None
+                # if self.datanum == 1: wrong = [9,10]
+                # elif self.datanum == 23: wrong = [5,6]
+                # elif self.datanum == 25: wrong = [12,13]
 
-                if wrong is not None:
-                    moveball0 = b_new[wrong[0]].copy()
-                    moveball1 = b_new[wrong[1]].copy()
-                    b_new[wrong[0]] = moveball1
-                    b_new[wrong[1]] = moveball0
+                # if wrong is not None:
+                #     moveball0 = b_new[wrong[0]].copy()
+                #     moveball1 = b_new[wrong[1]].copy()
+                #     b_new[wrong[0]] = moveball1
+                #     b_new[wrong[1]] = moveball0
                 
                 dist_error = np.sqrt(np.sum((b_new-b_org)**2,axis=1))
                 

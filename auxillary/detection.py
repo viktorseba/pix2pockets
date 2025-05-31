@@ -570,7 +570,7 @@ def get_detection(im_path, model, post_process=True, conf_thresh=0.4, iou_thresh
         # Remove detections with conf_score less than threshhold
         detection = detection[detection[:, 4] >= conf_thresh]
     
-    return im, detection
+    return cv2.imread(str(im_path))[:,:,::-1], detection
 
 def helper_plot_bbox(ax, boxes, valid_classes, colors, kind="detection"):
     alpha = (0.8,)
