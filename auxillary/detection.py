@@ -433,7 +433,7 @@ def table_analysis(im_paths, label_paths, model, data_name=None):
     
     return (table_ratio, perf)
 
-def load_dataset(dataset_name, weight_path, folder_type='train'):
+def load_dataset(dataset_name, imagenum=None, folder_type='train'):
     """
 
     Parameters
@@ -474,11 +474,21 @@ def load_dataset(dataset_name, weight_path, folder_type='train'):
         #print(os.path.join(label_folder, filename))
         # label_paths.append(os.path.join(label_folder, filename))
         label_paths.append(label_folder / filename)
-        
-    # model = torch.hub.load(yolo_path, 'custom', path=weight_path, source='local')
-    model = torch.hub.load("ultralytics/yolov5", "custom", path=weight_path)  # local model
-    model.eval()
-    return model, im_paths, label_paths
+    
+    im_paths.sort()
+    label_paths.sort()
+
+    def find_specific_index(imagenum,im_paths):
+        names = (f"{imagenum}_",f"{imagenum}t_",f"{imagenum}f_",f"{imagenum}a_")
+        matches = [i for i, s in enumerate(im_paths) if s.name.startswith(names)]
+        return [im_paths[i] for i in matches]
+
+    if imagenum is None:
+        return im_paths, label_paths
+    else:
+        im_paths = find_specific_index(imagenum,im_paths)
+        label_paths = find_specific_index(imagenum,label_paths)
+        return im_paths, label_paths
     
 
 def set_im_and_label_paths_to_all(folder_to_all_ims):

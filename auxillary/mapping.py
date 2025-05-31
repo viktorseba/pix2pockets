@@ -186,15 +186,13 @@ def hest(q1,q2,normalize=False):
 #%% 
 
 class HomographyMapping:
-    def __init__(self, label, detections, thres, im, datanum, savepath):
+    def __init__(self, detections, im, savepath, thres=3):
 
         self.dot_data_org = detections[detections[:, 5]==4][:,0:2] # TODO: is the last bracket needed?
         self.ball_data = detections[detections[:, 5]!=4]
 
-        self.label = label          # for frontview, t for topview, 45 for 45 degree view Used for plotting only
         self.thres = thres          # threshold for ransac
         self.im = im                # image to be transformed
-        self.datanum = datanum      # image index, used for saving files
 
         self.viewtype = 'UNKNOWN'
         self.h, self.w = self.im.shape[1],self.im.shape[0]
@@ -209,6 +207,8 @@ class HomographyMapping:
                      max(self.dot_data_org[:,1])+(bbox_h*bound)]
 
         self.savepath = savepath
+        self.savepath.mkdir(parents=True, exist_ok=True)
+        
         self.usedots = True # if False, only corners are used for mapping
         self.final_dist_error = None
 
@@ -404,17 +404,6 @@ class HomographyMapping:
         #      y            b
         #      G     g      Y
         
-        
-
-        if self.datanum == 11 and self.label == 'f': # dirty fix
-                print("TODO: something is wrong in the sorting algorithm, fix this later")
-                print(self.dot_list[3])
-                movedot0 = self.dot_list[3][0].copy()
-                movedot1 = self.dot_list[3][1].copy()
-                self.dot_list[3][0] = movedot1
-                self.dot_list[3][1] = movedot0
-                print(self.dot_list[3])
-        
     # final found points:
         if self.usedots: found_points = self.dot_list.copy()
         else: found_points = []
@@ -472,12 +461,6 @@ class HomographyMapping:
         
         tform = transform.ProjectiveTransform(self.H)
         
-        # if len(self.ball_data[0]) > 2: 
-        #     if self.label != "t": # used to do positioning of ballcenter of ball angleratio
-        #         self.ball_centers = np.array([[b[0]+(b[2]/2),b[1]+(b[3])/angleratio] for b in self.ball_data])
-        #     else:
-        #         self.ball_centers = np.array([[b[0]+(b[2]/2),b[1]+(b[3]/2)] for b in self.ball_data])
-        # else: 
         self.ball_centers = np.array([[b[0],b[1]] for b in self.ball_data])
         self.ball_classes = self.ball_data[:, -1] + 1
         
@@ -549,7 +532,7 @@ class HomographyMapping:
         fig.tight_layout()
 
         if save: 
-            fig.savefig(self.savepath/f'lines_{self.datanum}{self.label}.png', bbox_inches='tight',dpi=200)
+            fig.savefig(self.savepath/f'lines_{self.viewtype}.png', bbox_inches='tight',dpi=200)
         # plt.show()
         # plt.close()
     
@@ -572,7 +555,7 @@ class HomographyMapping:
             ax2[1].annotate(' '+str(i), (self.found_points[i,0], self.found_points[i,1]))
         
         if save: 
-            plt.savefig(self.savepath/f'template_{self.datanum}{self.label}.png', bbox_inches='tight',dpi=200)
+            plt.savefig(self.savepath/f'template_{self.viewtype}.png', bbox_inches='tight',dpi=200)
         # plt.show()
         # plt.close()
             
@@ -660,7 +643,7 @@ class HomographyMapping:
             ax3[1].scatter(self.H_dots[:-4,0], self.H_dots[:-4,1], s=dotsize, color='grey',zorder=1,label='projection points')
             ax3[1].scatter(self.H_dots[-3:,0], self.H_dots[-3:,1], s=dotsize, color='grey',zorder=1)
             
-            if len(compareballs)>0 and self.label!="t":
+            if len(compareballs)>0 and self.viewtype!="TOPVIEW":
 
                 # b_new = self.ball_H[np.lexsort(np.transpose(self.ball_H)[::-1])]
                 # b_org = compareballs[np.lexsort(np.transpose(compareballs)[::-1])]
@@ -671,9 +654,6 @@ class HomographyMapping:
                 #dirty fix no 2:
                 #balls not ordered correctly
                 # wrong = None
-                # if self.datanum == 1: wrong = [9,10]
-                # elif self.datanum == 23: wrong = [5,6]
-                # elif self.datanum == 25: wrong = [12,13]
 
                 # if wrong is not None:
                 #     moveball0 = b_new[wrong[0]].copy()
@@ -724,7 +704,7 @@ class HomographyMapping:
             if save: 
                 # if self.final_dist_error > 1:
                 #     self.savepath+='errors/'
-                plt.savefig(self.savepath/f'shift_{self.label}_{self.final_dist_error}.png', bbox_inches='tight',dpi=200)
+                plt.savefig(self.savepath/f'shift_{self.viewtype}_{self.final_dist_error}.png', bbox_inches='tight',dpi=200)
             
             plt.show()
             plt.close()
