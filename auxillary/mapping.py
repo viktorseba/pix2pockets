@@ -208,7 +208,7 @@ class HomographyMapping:
 
         self.savepath = savepath
         self.savepath.mkdir(parents=True, exist_ok=True)
-        
+
         self.usedots = True # if False, only corners are used for mapping
         self.final_dist_error = None
 
@@ -709,9 +709,13 @@ class HomographyMapping:
             plt.show()
             plt.close()
 
-    def extract_things_we_might_need(self):
-        return self.H, self.template_points, self.found_points, self.ball_H, self.final_dist_error, self.viewtype, self.warpedim
-    
+    def remove_pocketballs(self):
+        """
+        Removes pocketed balls from the ball data.
+        """
+        return self.cornerpoints_template
+
+
     def to_RL(self):
         x_min, x_max = np.min(self.template_points[:,0]), np.max(self.template_points[:, 0])
         y_min, y_max = np.min(self.template_points[:,1]), np.max(self.template_points[:, 1])
