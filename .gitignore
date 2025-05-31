@@ -17,3 +17,6 @@ RL_models/
 .DS_Store
 __pycache__/
 .env
+
+# config for api key
+roboflow.json
