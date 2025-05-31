@@ -20,6 +20,7 @@ from auxillary.RL_config_env import *
 import matplotlib.pyplot as plt
 import time
 from copy import copy
+from typing import Literal, Union
 
 
 class PoolEnv(gym.Env):
@@ -29,20 +30,54 @@ class PoolEnv(gym.Env):
 
     def __init__(
             self,
-            algo="PPO",
-            balls_init=None,
-            suit=2,  # 1: Solid, 2: Stripe
-            training=True,
-            fps=60,
-            num_balls=2,
-            special_state=None,
-            obs_type="vector",
-            sigma=0,
-            cheat_force = False,
-            cheat_angle = False,
-            game_type = 'blue_only',
-            bank_shots = True,
+            algo: Literal['PPO', 'TD3', 'SAC', 'DDPG', 'A2C', 'PPO_masked']='PPO',
+            balls_init: Union[np.array, None]=None,
+            suit: Literal[1,2]=2,
+            training: bool=True,
+            fps: int=60,
+            num_balls: int=2,
+            special_state: Union[int, None]=None,
+            obs_type: Literal['vector', 'image']='vector',
+            sigma: float=0.0,
+            oracle: bool=False,
+            game_type: Literal['normal', 'blue_only']='normal',
+            bank_shots: bool=True,
+            max_num_shots: int=10
     ):
+        """_summary_
+
+        Args:
+            algo (Literal['PPO', 'TD3', 'SAC', 'DDPG', 'A2C', 'PPO_masked'], optional): What RL algorithm to run. Defaults to 'PPO'.
+            
+            balls_init (Union[np.array, None], optional): Position and classes of balls in a state. Can be of shape (num_balls x 3) 
+            or (num_balls x 3 x num_states). The position of the balls should be in [x,y,c] format, with x,y in the range [0,1] and 
+            c is in [1,2,3,4]. Defaults to None.
+            
+            suit (Literal[1,2], optional): Specifies what class your suit is. Can only be 1 or two (striped or solid). Defaults to 2.
+            
+            training (bool, optional): Indicates if the environment should be run in training-mode. Defaults to True.
+            
+            fps (int, optional): Sets the fps. Defaults to 60.
+            
+            num_balls (int, optional): Sets the number of balls. If balls_init is given, the shape of balls_init replaces this. Defaults to 2.
+            
+            special_state (Union[int, None], optional): If balls_init is given and has shape (num_balls, 3, num_states), this argument forces 
+            the environemnt to always pick this state. Mostly used for debugging. Defaults to None.
+            
+            obs_type (Literal['vector', 'image'], optional): Type of observation. Use 'image' if you want to utilize a CNN for feature extraction.
+            Defaults to 'vector'.
+            
+            sigma (float, optional): Noise on the angle. Used for a test. Defaults to 0.0.
+            
+            oracle (bool, optional): Indicates if the Oracle should be used. This will overwrite the actions of the agent completely. Defaults to False.
+            
+            game_type (Literal['normal', 'blue_only'], optional): 'blue_only' mode sets all balls to blue (ie your suit). Defaults to 'normal'.
+            
+            bank_shots (bool, optional): Indicates if bank shots should be considerd by the Oracle. Gives rise to more shot opportunities with an
+            increase in computational cost. Defaults to True.
+            
+            max_num_shots (int, optional): Sets the maximum number of shots in an episode before restarting. If training, this is set to 1. Defaults to 10.
+        """
         #
         self.algorithm = algo
         self.balls_init = balls_init
@@ -51,9 +86,11 @@ class PoolEnv(gym.Env):
         self.fps = fps
         self.obs_type = obs_type
         self.sigma = sigma
-        self.cheat_force = cheat_force
-        self.cheat_angle = cheat_angle
+        self.oracle = oracle
         self.game_type = game_type
+        self.max_num_shots = 1 if self.training else max_num_shots
+        
+        self.enemy_suit = 1 if self.suit == 2 else 2
 
         self.bank_shots = bank_shots #  add extra target pockets
         self.balls = []
@@ -67,7 +104,7 @@ class PoolEnv(gym.Env):
         self.height = FULL_SCREEN_HEIGHT
         self.num_balls = num_balls if balls_init is None else self.balls_init.shape[0]
         self.total_balls = 16
-        self.draw_screen = (self.obs_type == "image") or not training  # Replace with some logic to determine when to draw the screen.
+        self.draw_screen = (self.obs_type == "image") or not training
         self.running = True
         self.paused = False
         self.win_list = ['w']
@@ -82,16 +119,12 @@ class PoolEnv(gym.Env):
             self.action_space = spaces.Box(low=np.array([-1, 0]), high=np.array([1, 1]), shape=(2,))
         else:
             self.action_space = spaces.MultiDiscrete([N_ANGLES, FORCE])
-            # self.action_space = spaces.Box(low=np.array([-1, 0]), high=np.array([1, 1]), shape=(2,))
 
         self.actions = [[0,0]] 
 
         if self.obs_type == "vector":
             box_low = np.array([0.0, 0.0, 0] * self.total_balls)
-            # box_high = np.array([self.width, self.height, 1] * self.total_balls)
             box_high = np.array([1.0, 1.0, 1] * self.total_balls)
-            # box_high = np.array([1,1,1]*self.num_balls)
-            # box_shape = (1,3 * num_balls)
             box_shape = (3 * self.total_balls, )  # obs: [[x1, y1, c1], [x2, y2, c2], ...]
             self.observation_space = spaces.Box(low=box_low,
                                                 high=box_high,
@@ -147,7 +180,6 @@ class PoolEnv(gym.Env):
         self.start_time = time.perf_counter()
         self.replay_state = False
         self.view_lines = False
-        self.test_all_hp = False
         self.failed_states = []
         self.hit_success = []
         self.best_score = 0
@@ -193,13 +225,9 @@ class PoolEnv(gym.Env):
             self.target_points = np.array([list(x) for x in TARGET_POSITIONS])
             self.cushion_corners = np.array(CUSHION_CORNERS)
 
-
-        # print(self.target_points)
         self.window_vectors = []
         self.pocket_value_counter = np.zeros_like(self.target_points[:,0])
-        # for i,c in enumerate(self.target_points):
-        #     plt.scatter(c[0],c[1],color='b',s=2)
-        #     plt.text(c[0]+50, c[1], str(i))
+
 
         self.draw_stuff = {
             "hit_points": [],
@@ -290,99 +318,42 @@ class PoolEnv(gym.Env):
                 else: print('with spec: ball', spec.number, end=' ')
             print()
 
-    # @staticmethod
-    # def ball_post_solve(arbiter, space, data):
-    #     ball1, ball2 = arbiter.shapes
-
-        # print()
-        # print("Post_solve")
-        # print(f"Ball1: {ball1.body.velocity}")
-        # print(f"Ball2: {ball2.body.velocity}")
-
     @staticmethod
     def ball_post_solve(arbiter, space, data):
 
         ball1, ball2 = arbiter.shapes
-        point_a = arbiter.contact_point_set.points[0].point_a  # collision point on ball1
-        point_b = arbiter.contact_point_set.points[0].point_b  # collision point on ball2
 
-        # print("Velocities post_solve:")
-        # print(f"Ball {ball1.ballclass}: {ball1.body.velocity}")
-        # print(f"Ball {ball2.ballclass}: {ball2.body.velocity}")
-
-        speed = ball1.body.velocity.length
-        old_vel = ball1.body.velocity.normalized()
-        # new_vel = (point_b - point_a).normalized()
-        # new_vel = (point_b - ball2.body.position).normalized()
-        # new_vel = -arbiter.normal.normalized()
-        # new_vel = (ball1.body.position - ball2.body.position).normalized()
-
+        # Fetch velocities and positions
         v1 = data["tracking"]["last_ball_contact_vel"][ball1.number]
         v2 = data["tracking"]["last_ball_contact_vel"][ball2.number]
         x1 = ball1.body.position
         x2 = ball2.body.position
-        # print()
-        # print()
-        # print(f"|x1-x2|: {(x1-x2)}")
-        # print(((v1 - v2).dot((x1 - x2)) / (x1 - x2).length**2) * (x1 - x2))
 
         # https://en.wikipedia.org/wiki/Elastic_collision#Two-dimensional
-
         dv1 = ((v1 - v2).dot((x1 - x2)) / (x1 - x2).length**2) * (x1 - x2)
         dv2 = ((v2 - v1).dot((x2 - x1)) / (x2 - x1).length**2) * (x2 - x1)
 
-        # k = 20
-        # if dv1.length < k:
-        #     dv1 = dv1.normalized() * k
-        #     dv2 = dv2.normalized() * k
-        # print(dv1.length)
-        # print(dv2.length)
         new_vel1 = v1 - dv1
         new_vel2 = v2 - dv2
-        # new_vel1
+
         if data["ball_tracking"]["init_velocity"][ball1.number] == Vec2d.zero():
-            # data["ball_tracking"]["init_velocity"][ball1.number] = ball1.body.velocity
             data["ball_tracking"]["init_velocity"][ball1.number] = ball1.body.velocity
             data["ball_tracking"]["calc_velocity"][ball1.number] = new_vel1
-        # ball1.body.velocity = (new_vel + old_vel).normalized() * speed
         ball1.body.velocity = new_vel1
 
-        # if ball1.number == data["cue_ball"].number:
-        #     data["cue_ball"].body.velocity = new_vel
-
-        speed = ball2.body.velocity.length
-        old_vel = ball2.body.velocity.normalized()
-        # new_vel = (point_a - point_b).normalized()
-        # new_vel = (point_a - ball1.body.position).normalized()
-        # new_vel = -arbiter.normal.normalized().perpendicular()
-        # new_vel = (ball2.body.position - ball1.body.position).normalized()
         if data["ball_tracking"]["init_velocity"][ball2.number] == Vec2d.zero():
-            # data["ball_tracking"]["init_velocity"][ball2.number] = ball2.body.velocity
             data["ball_tracking"]["init_velocity"][ball2.number] = ball2.body.velocity
             data["ball_tracking"]["calc_velocity"][ball2.number] = new_vel2
-        # ball2.body.velocity = (new_vel + old_vel).normalized() * speed
         ball2.body.velocity = new_vel2
-        # if ball2.number == data["cue_ball"].number:
-        #     data["cue_ball"].body.velocity = new_vel
+        
+        
         data["tracking"]["normal_vectors"].append(arbiter.normal)
-        # print(f"Friction: {arbiter.friction}")
-        # print(f"Elasticity: {arbiter.restitution}")
-        # print(f"KE lost: {arbiter.total_ke}")
-
-        # print(f"Ball1 vel (pymunk): {ball1.body.velocity}")
-        # print(f"Ball1 vel (us):     {new_vel1}")
-
-        # print(f"Ball2 vel (pymunk): {ball2.body.velocity}")
-        # print(f"Ball2 vel (us):     {new_vel2}")
-        # print()
-        # print()
         return True
 
 
     @staticmethod
     def ball_contacted(arbiter, space, data):
         # count bank/carrom shot collisions
-        # print('Ball contacted!!')
         data["tracking"]["ball_collision"] = True
         ball1, ball2 = arbiter.shapes
         s_ball = None
@@ -407,33 +378,12 @@ class PoolEnv(gym.Env):
             if (c_ball is not None) and (s_ball.ballclass == data["tracking"]["suit"]):
                 data["tracking"]["first_suit_collision"] = c_ball.body.position
 
-        # if data["ball_tracking"]["init_velocity"][ball1.number] == Vec2d.zero():
-        #     vel = (ball1.body.position - ball2.body.position).normalized()
-        #     data["ball_tracking"]["init_velocity"][ball1.number] = vel * 200
-
-        # if data["ball_tracking"]["init_velocity"][ball2.number] == Vec2d.zero():
-        #     vel = (ball2.body.position - ball1.body.position).normalized()
-        #     data["ball_tracking"]["init_velocity"][ball2.number] = vel * 200
-
         for contact_point in arbiter.contact_point_set.points:
             data["tracking"]["contact_point"].append((contact_point.point_a, contact_point.point_b))
             data["tracking"]["contact_point_dist"].append(contact_point.distance)
-            # data["tracking"]["contact_point"].append(contact_point.point_b)
 
         data["tracking"]["last_ball_contact_vel"][ball1.number] = ball1.body.velocity
         data["tracking"]["last_ball_contact_vel"][ball2.number] = ball2.body.velocity
-
-        # print("Velocities contact:")
-        # print(f"Ball {ball1.ballclass}: {ball1.body.velocity}")
-        # print(f"Ball {ball2.ballclass}: {ball2.body.velocity}")
-        # print(f"|x1-x2|: {(ball1.body.position-ball2.body.position)}")
-        # arbiter.total_ke = 0
-        # print(arbiter.contact_point_set.points[0].distance)
-        # print(arbiter.contact_point_set.points[1].distance)
-        # print(data["tracking"]["contact_point"])
-        # Update s_ball shot_vec
-        # vec = np.array(s_ball.body.position) - np.array(c_ball.body.position)
-        # data["ball_tracking"]["shot_vectors"][s_ball.number] = vec / (np.linalg.norm(vec) + 1e-8)
         return True
 
     @staticmethod
@@ -452,19 +402,13 @@ class PoolEnv(gym.Env):
 
         data["tracking"]["ball_pocketed"].append(ball)
 
-        # number = ball.number
         try:
             data["balls"].remove(ball)
         except ValueError:
             pass
         space.remove(ball, ball.body)
 
-        # # Shift ball numbers down
-        # for b in data["balls"]:
-        #     if b.number > number:
-        #         b.number = b.number - 1
-
-        # Implement note: change black to your suit when all your balls are pocketed
+        # Change black to your suit when all your balls are pocketed
         if sum([ball.ballclass == data["suit"] for ball in data["balls"]]) == 0:
             for ball in data["balls"]:
                 if ball.ballclass == 4:
@@ -485,38 +429,28 @@ class PoolEnv(gym.Env):
         for contact_point in arbiter.contact_point_set.points:
             data["tracking"]["contact_point"].append((contact_point.point_a, contact_point.point_b))
             data["tracking"]["contact_point_dist"].append(contact_point.distance)
-            # data["tracking"]["contact_point"].append(contact_point.point_b)
-        # print(ball.body.velocity)
+
         d = ball.body.velocity
         data["tracking"]["last_cushion_vel"] = ball.body.velocity
-        # ball.body.velocity = Vec2d.zero()
-        # ball.body.velocity *= 0.1
+
         return True
 
     @staticmethod
     def cushion_post_solve(arbiter, space, data):
         ball, rail = arbiter.shapes
-        # print(ball.body.velocity)
         speed = ball.body.velocity.length
         d = data["tracking"]["last_cushion_vel"]
-        # print(arbiter.normal)
         n = arbiter.normal
-        # data["tracking"]["normal_vectors"].append(arbiter.normal)
         new_vel = (d - 2 * (d.dot(n)) * n).normalized() * speed
         ball.body.velocity = new_vel
 
-        # print(new_vel)
-
-
     def add_balls(self):
-        
         self.balls = []
         positions = []
         amount_solids = int(np.floor((self.num_balls - 2) / 2))
         amount_stripes = int(np.ceil((self.num_balls - 2) / 2))
         
         self.numblues = amount_stripes
-        
         b_number = 0
 
         # 1: Stripe, 2: Solid, 3: Cue, 4: Black
@@ -526,28 +460,20 @@ class PoolEnv(gym.Env):
             ball_classes = ([2] * (self.num_balls - 1)) + [3]
 
         if not self.replay_state:
-
             self.Continue = False
 
             if self.special_state is None:
-
                 if self.balls_init is None:
                     pass
 
                 elif len(self.balls_init.shape) == 3:
                     # self.random_state = np.random.randint(0, self.balls_init.shape[2])
                     self.random_state = self.total_steps % self.balls_init.shape[2]
-
             else:
                 self.random_state = self.special_state #389
 
-            # self.random_state = np.random.randint(0, self.balls_init.shape[2])
-
-            # self.random_state = FAILED_STATES[self.total_steps % len(FAILED_STATES)]
-
         for i in range(self.num_balls):
             intertia = pymunk.moment_for_circle(BALL_MASS, 0, BALL_RADIUS, offset=(0, 0))
-            # intertia = np.inf
             ball_body = pymunk.Body(BALL_MASS, intertia)
 
             # initialize positions
@@ -559,7 +485,7 @@ class PoolEnv(gym.Env):
                                           ]
                     ballclass = int(self.balls_init[i, 2])
 
-                # Below is used for test purposes
+                # Below is used for multiple states
                 elif len(self.balls_init.shape) == 3:
                     x, y = self.balls_init[i, :2, self.random_state]
                     ball_body.position = [int((UPPER_X - LOWER_X - 2)*x + LOWER_X) + 1,
@@ -592,7 +518,6 @@ class PoolEnv(gym.Env):
                 # if no overlap, new ball position is valid
                 ball_body.position = [new_ball_x, new_ball_y]
                 ballclass = ball_classes[i]
-                # ball_body.ballclass = ballclass
 
             ball = pymunk.Circle(ball_body, BALL_RADIUS, offset=(0, 0))
             ball.elasticity = BALL_ELASTICITY
@@ -641,8 +566,6 @@ class PoolEnv(gym.Env):
 
         self.space.add(*self.cushions, *self.pockets)
 
-
-
     def _get_obs(self):
         if self.obs_type == "image":
             img = pygame.surfarray.pixels3d(self.screen)
@@ -666,7 +589,7 @@ class PoolEnv(gym.Env):
                              ball.ballclass / 4] for ball in self.balls])
 
             balls_to_fill = self.total_balls - len(self.balls)
-            if len(self.balls) == 0:  # PROBLEM WITH THIS (maybe not?)
+            if len(self.balls) == 0:
                 # if no balls on table
                 obs = (np.repeat(np.array([0, 0, 0]), balls_to_fill, axis=0).reshape(balls_to_fill, 3).flatten())
             elif balls_to_fill > 0:
@@ -806,15 +729,6 @@ class PoolEnv(gym.Env):
 
             alpha = (true_hit - cb).normalized().dot((hit_point - cb).normalized())
 
-            score = self.scores[idx][-1] * alpha
-
-            # angle = abs(self.cue_shot_vec.get_angle_degrees_between(
-                # self.draw_stuff["hit_points_best"] - cb))
-
-            #herherher
-            # self.rewardfunc = ['angle_hitpoint', score]
-            # print(self.scores)
-
     # min angle from target ball initial vel to a pocket
         if self.tracking["target_ball"] is not None:
             target_ball = self.tracking["target_ball"]
@@ -848,8 +762,6 @@ class PoolEnv(gym.Env):
 
     def plot_parms(self):
         x, y = self.cue_ball.body.position
-        # print(x, y)
-        # ax[0] = plt.scatter(x, y)
 
         if self.winning_condition_met():
             self.win_list.append('r')
@@ -858,11 +770,7 @@ class PoolEnv(gym.Env):
 
         t = [i[0] for i in self.actions]
         v = [i[1] for i in self.actions]
-        # print(t)
-        # print(v)
-        # color = 'r' if self.winning_condition_met() else 'b'
         plt.scatter(t, v, c=self.win_list)
-        # ax[1] = plt.plot(range(self.steps_taken + 1), v)
 
         plt.show()
 
@@ -876,20 +784,10 @@ class PoolEnv(gym.Env):
         return False
 
     def best_shot_criteria(self, best_vectors):
-
-        # vectors, ball_number = best_vectors
-        # vectors, pocket_vectors, ball_numbers = zip(*best_vectors)
         hit_vectors, pocket_id, ball_number = zip(*best_vectors)
-
-        # print(ball_number)
-
-        # Hit vector that maximizes angle window from ball to pocket
         scores = []
-
-        # print(pocket_id)
-        # print([self.pocket_ids[pocket_id[i]] for i in range(len(best_vectors))])
         self.scores = []
-        # print(self.random_state)
+
         for i in range(len(best_vectors)):
 
             b_id = ball_number[i] // 100
@@ -903,8 +801,6 @@ class PoolEnv(gym.Env):
                 multiplier = 1/2
             else:                           # different tables
                 multiplier = 1/4
-
-            # print(ball_number[i],self.pocket_ids[pocket_id[i]],b_id,p_id,multiplier)
 
             cus1 = Vec2d(*self.cushion_corners[pocket_id[i]][0])
             cus2 = Vec2d(*self.cushion_corners[pocket_id[i]][1])
@@ -929,23 +825,16 @@ class PoolEnv(gym.Env):
 
             scores.append((angle_between + cos_weight) * multiplier)
             self.scores.append([angle_between,cos_weight,multiplier, scores[-1]])
-            # print(i, round(res,2),round(cos_weight,2),multiplier)
 
         best = np.argmax(scores)
         bestscore = np.max(scores)
-        # print(f"Best window: {window[best]}")
-        # best = np.argmin([vec.length for vec in vectors])
-        # best = np.argmin([abs(vec.get_angle_degrees_between(poc_vec)) for vec, poc_vec in zip(vectors, pocket_vectors)])
-
-        # best = np.random.randint(0, len(best_vectors))
-        # return self.normalize_vector(best_vectors[best]), best
-        # print(vectors[best], best)
         return hit_vectors[best], best, bestscore
 
-    def is_straight_line(self, main_pos, target_pos, exclude=[],include=[]):
+    def is_straight_line(self, main_pos, target_pos, exclude=[], include=[]):
+        # Checks if there is an unobstructed line from main_pos to target_pos.
         # Main_pos: Vec2d
         # Target_pos: Vec2d
-        # exclude: [Vec2d, Vec2d]  -- list of points to exclude other than main and target
+        # exclude: [Vec2d, Vec2d]   -- list of points to exclude other than main and target
 
         main_pos = Vec2d(*main_pos)
         target_pos = Vec2d(*target_pos)
@@ -953,25 +842,21 @@ class PoolEnv(gym.Env):
         def point_on_line_seg(a, b, p):
             # a is start of line segment
             # b is end of line segment
-            # p in point we want to find the distance to
-            # print(p)
+            # p is point we want to find the distance to
             a = Vec2d(*a)
             b = Vec2d(*b)
             p = Vec2d(*p)
             ap = p - a
             ab = b - a
-            # print(ap, ab)
-            # t = np.dot(ap, ab) / np.dot(ab, ab)
+
             t = ap.dot(ab) / ab.get_length_sqrd()
             # if you need the the closest point belonging to the segment
             t = max(0, min(1, t))
             point = a + (t * ab)
             dist = p.get_distance(point)
             return dist
-        
     
         def hits(item, exlist,s,r=2):
-            # if s=="gho": print(len(item))
             try: 
                 [ball.body.position for ball in item]
             except:
@@ -983,58 +868,9 @@ class PoolEnv(gym.Env):
             
             dists = [point_on_line_seg(exlist[0], exlist[1], ball) for ball in pos]
             hit = sum([abs(d) <= (r * BALL_RADIUS) for d in dists]) > 0
-            
-            # print(s,hit,end="")
-            
-            # if not hit and s=="gho":
-            #     for i in range(len(pos)):
-            #         print(dists[i] , pos[i],end="")
-            
-            # print()
             return hit
-        
-    # Find distance from other balls to line
-        # ball_pos = np.array([ball.body.position for ball in self.balls
-        #                      if ball.body.position not in [main_pos, target_pos] + exclude]).reshape(-1, 2)
-        # dists_ball = [point_on_line_seg(main_pos, target_pos, ball) for ball in ball_pos]
-        # hitsball = sum([abs(d) <= 2 * BALL_RADIUS for d in dists_ball]) > 0
-        
-        
 
-        # ghost_pos = np.array([position for position in self.ghost_balls
-        #                      if position not in [main_pos, target_pos] + exclude]).reshape(-1, 2)
-        # dists_ghosts = [point_on_line_seg(main_pos, target_pos, ball) for ball in ghost_pos]
-        # hitsghost = sum([abs(d) <= 2 * BALL_RADIUS for d in dists_ghosts]) > 0
-        
-        # print(dists_ghosts)
-
-        # Pocket dist
-        # pock_pos = np.array([Vec2d(*target_point) for target_point in self.target_points
-        #                      if Vec2d(*target_point) not in [main_pos, target_pos] + exclude]).reshape(-1, 2)
-
-        # # dists_pocket = np.cross(target_pos - main_pos, pock_pos - main_pos) / np.linalg.norm(target_pos - main_pos)
-        # dists_pocket = [point_on_line_seg(main_pos, target_pos, pock) for pock in pock_pos]
-
-        # Find distance from cushions to line
-        # cushion_pos = np.array([Vec2d(*x) for x in self.cushion_corners.reshape(-1, 2)
-        #                         if Vec2d(*x) not in [main_pos, target_pos] + exclude]).reshape(-1, 2)
-
-        # # dists_cushions = np.cross(target_pos - main_pos, cushion_pos - main_pos) / np.linalg.norm(target_pos - main_pos)
-        # dists_cushions = [point_on_line_seg(main_pos, target_pos, cush) for cush in cushion_pos]
-
-        # Check if the line is obstructed
-        # dists = dists_ball + dists_ghosts + dists_pocket + dists_cushions
-
-        # if sum([abs(d) <= 2 * BALL_RADIUS for d in dists]) > 0:
-            
-        exlist = [main_pos, target_pos] + exclude
-        
-        
-        # hitsball = hits(self.balls, exlist)
-        # hitsghost = hits(self.ghost_balls, exlist)
-        # hitspocket = hits(self.target_points, exlist)
-        # hitscush = hits(self.cushion_corners.reshape(-1, 2), exlist)
-        
+        exlist = [main_pos, target_pos] + exclude        
         
         if hits(self.balls, exlist,"bal"):
             self.trash_lines.append([main_pos,target_pos,"ball"])
@@ -1051,30 +887,7 @@ class PoolEnv(gym.Env):
         elif hits(self.target_points, exlist,"poc"):
             self.trash_lines.append([main_pos,target_pos,"pocket"])
             return False
-        
-        # elif len(include) != 0:
-        #     for p in include:
-        #         for i, line in enumerate(CUSHION_INNER_LINES):
-        #             dist = p[int(i>=2)] - line
-        #             if abs(dist) < 2*BALL_RADIUS:
-        #                 if i < 2:   fakehitpoint = (line-dist,p[1])
-        #                 else:       fakehitpoint = (p[0],line-dist)
-                    
-        #                 if hits([fakehitpoint], exlist,"fake",r=1):
-        #                     self.trash_lines.append([main_pos,target_pos,"fake"])
-        #                     self.fakehits.append([p,fakehitpoint])
-        #                     print("der var fake lol")
-                    
 
-                
-            
-        # elif hits(self.cushion_corners.reshape(-1, 2), exlist):
-        #     self.trash_lines.append([main_pos,target_pos,"cushion"])
-        #     return False
-            
-        # if hitsball or hitsghost or hitspocket or hitscush:
-        #     self.trash_lines.append([main_pos,target_pos])
-        #     return False  # Line is obstructed
         return True  # The line has no obstructions
         
     
@@ -1083,10 +896,6 @@ class PoolEnv(gym.Env):
         self.ghost_opponents = []
         
         for ball in self.balls:
-            # print(ball.number)
-            # if ball.ballclass != self.suit:  # Only consider your own suit
-            #     continue
-
             real_ball_pos = ball.body.position
 
             ghosts = []
@@ -1107,10 +916,6 @@ class PoolEnv(gym.Env):
     
     def find_best_shot(self):
         # Find lines from balls to pockets
-        # lines_to_pockets = [[False] * 6 for _ in range(len(self.balls))]
-        # cue_to_ball = [False * (len(self.balls) - 1)]
-
-        # vector_and_pos = [[] for _ in range(self.num_balls - 1)]
         self.good_vectors = []
         all_vectors = []
         self.draw_stuff["hit_points"] = []
@@ -1131,27 +936,6 @@ class PoolEnv(gym.Env):
 
         for ball in self.balls:
             real_ball_pos = ball.body.position
-            
-            # print(ball.number)
-            # if ball.ballclass != self.suit:  # Only consider your own suit
-            #     continue
-
-            # real_ball_pos = ball.body.position
-
-            # ghosts = []
-            # ghost_opponents = []
-            # if self.bank_shots:
-            #     for i, line in enumerate(CUSHION_INNER_LINES):
-            #         dist = real_ball_pos[int(i>=2)] - line
-            #         if dist > BALL_RADIUS or dist < -BALL_RADIUS:
-            #             if i < 2:   coord = (line-dist,real_ball_pos[1])
-            #             else:       coord = (real_ball_pos[0],line-dist)
-
-            #             if ball.ballclass == self.suit: ghosts.append(coord)
-            #             elif ball.ballclass != self.cue_ball.ballclass: ghost_opponents.append(coord)
-
-            # self.ghost_balls = self.ghost_balls + ghosts
-            # self.ghost_opponents = self.ghost_opponents + ghost_opponents
 
             if ball.ballclass != self.suit:  # Only consider your own suit from here
                 continue
@@ -1161,12 +945,9 @@ class PoolEnv(gym.Env):
                 for i, pocket in enumerate(self.target_points):
                     pocket_pos = Vec2d(*pocket)
 
-                    # lines_to_pockets[ball.number][i] = True
-
                     # Calculate pos the cue should hit
                     pocket_vec = (pocket_pos - ball_pos).normalized()
                     hit_pos = ball_pos - ((2 - 0) * BALL_RADIUS * pocket_vec)
-                    # hit_pos = hit_pos.int_tuple
 
                     cue2hit_vector = (hit_pos - cue_pos).normalized()
                     theta = cue2hit_vector.get_angle_degrees_between(pocket_vec)
@@ -1176,10 +957,7 @@ class PoolEnv(gym.Env):
                     if (theta > THETA_LIMIT) or (theta < -THETA_LIMIT):  # Bad pocket
                         continue
 
-                    # if (hit_pos[0] <= LOWER_X) or (hit_pos[0] >= UPPER_X) or (hit_pos[1] <= LOWER_Y) or (hit_pos[1] >= UPPER_Y):
-                        # continue
 
-                    # print(f"theta: {theta}")
                     # Check if there exists a line from ball to pocket
                     if self.is_straight_line(ball_pos, pocket_pos,include=[hit_pos]):
 
@@ -1189,28 +967,16 @@ class PoolEnv(gym.Env):
                             self.good_hit_points.append(Vec2d(*hit_pos))
                             self.draw_stuff["hit_points"].append(hit_pos)
                             self.draw_stuff["hit_points_details"].append([ball_pos,pocket_pos])
-                            # self.good_vectors.append((hit_pos - cue_pos, pocket_vec, ball.number))
                             self.good_vectors.append([hit_pos - cue_pos, i, ghostnum*100 + ball.number])
 
         # ball for loop end
-        # print(f"Good vectors: {[self.normalize_vector(x) for x in self.good_vectors]}\n")
         if len(self.good_vectors) != 0:
             self.best_shot, best, self.best_score = self.best_shot_criteria(self.good_vectors)
             self.draw_stuff["hit_points_best"] = self.draw_stuff["hit_points"][best]
             self.draw_stuff["draw_hit_points"] = True
-            # bh = self.draw_stuff["hit_points_best"]
-            # print(f"Best hitpoint: {bh}")
 
-            # target_number = self.good_vectors[best][2]
-            # self.target_ball = self.balls[target_number]
-            # print(self.best_shot)
         else:
-            # hit_vectors, thetas = zip(*self.hit_points)
-            # self.best_shot = hit_vectors[np.argmin(thetas)] - cue_pos
             self.best_shot, best, self.best_score = self.best_shot_criteria(all_vectors)
-            # self.draw_stuff["hit_points_best"] = self.draw_stuff["hit_points"][best]
-            # self.draw_stuff["draw_hit_points"] = True
-
         return None
 
     def find_windows(self):
@@ -1232,12 +998,7 @@ class PoolEnv(gym.Env):
             if (min(w1, w2) <= self.angle) and (self.angle <= max(w1, w2)) and self.is_straight_line(cue_pos, ball_pos):
                 self.cue_alpha = 0
             else:
-                # self.cue_alpha = min([abs(self.angle - w1), abs(self.angle - w2), self.cue_alpha])
                 self.cue_alpha = min([abs(self.angle - (w1+w1)/2), self.cue_alpha])
-            # self.window_cue_angles[ball.number] = [w1.angle_degrees, w2.angle_degrees]
-
-            # if ball_tracking["init_velocity"][ball.number] != Vec2d.zero():
-            #     # Find window from ball to pockets
 
         # Find window from target ball to every pocket
         self.target_alpha = np.inf
@@ -1263,12 +1024,9 @@ class PoolEnv(gym.Env):
             w1 = Vec2d(*(r1 - target_pos)).angle_degrees
             w2 = Vec2d(*(r2 - target_pos)).angle_degrees
 
-            # print(f"target_pos: {target_pos}")
-            # print(f"pocket_target: {pocket_target}")
             if (min(w1, w2) <= target_angle) and (target_angle <= max(w1, w2)) and self.is_straight_line(target_pos, pocket_target):
                 self.target_alpha = 0
             else:
-                # self.target_alpha = min([abs(target_angle - w1), abs(target_angle - w2), self.target_alpha])
                 self.target_alpha = min([abs(target_angle - (w1+w2)/2), self.target_alpha])
 
         return None
@@ -1287,8 +1045,6 @@ class PoolEnv(gym.Env):
             
             mask[valid_shot] = True
         
-        # best_shot = int(np.round((self.best_shot.angle_degrees + 180)*ANGLE_PRECISION))
-        # mask[best_shot] = True
         # If somehow there are no "good" shots, select one at random.
         if sum(mask) == 0:
             random_idx = np.random.randint(0, len(mask))
@@ -1296,14 +1052,13 @@ class PoolEnv(gym.Env):
             
         return mask
 
-
     def reset_tracking(self):
         self.tracking = {
             "is_success": False,
             "suit": self.suit,
             "cue_ball_pocketed": False,
             "black_ball_pocketed": False,
-            "ball_pocketed": [],  # 1: solids, 2: stripes, 3: cue, 4: black
+            "ball_pocketed": [],  # 1: stripe, 2: solid, 3: cue, 4: black
             "first_cue_contact": None,  # None (0), ball (1), pocket (2), cushion (3)
             "target_ball": None,  # None if no ball is hit, else is the first ball cue contacts.
             "first_suit_collision": None,
@@ -1344,7 +1099,6 @@ class PoolEnv(gym.Env):
         # Remove balls, pockets and cushion
         for x in self.space.shapes:
             try:
-                # print(x.pivot)
                 self.space.remove(x)
                 self.space.remove(x.body)
             except AssertionError:
@@ -1359,62 +1113,39 @@ class PoolEnv(gym.Env):
 
         self.steps_taken = 0
         self.reward = 0
-
+        self.lost = False
+        self.win = False
+        self.window_vectors = []
+        self.prev_pocketed_balls = []
+        
+        # Add balls and table
         self.add_table()
         self.add_balls()
-        # Implement note: change black to your suit when all your balls are pocketed
+        
+        # Change black to your suit when all your balls are pocketed
         if sum([ball.ballclass == self.suit for ball in self.balls]) == 0:
             for ball in self.balls:
                 if ball.ballclass == 4:
                     ball.ballclass = self.suit
-        self.lost = False
-        self.win = False
-        self.draw_stuff["draw_hit_points"] = False
-        self.window_vectors = []
-        self.prev_pocketed_balls = []
-        
-        # self.actions = [[0, 0]]
-        # ======== SETUP TRACKING ======== #
-        # print(f"Current suit: {self.suit}")
+                    
         self.reset_tracking()
-
         self.find_best_shot()
-        # self.number_hit_point = len(self.good_hit_points)
-
-        # ### TEST ###
-        # center_alpha = (self.balls[0].body.position - self.cue_ball.body.position).angle_degrees
-        # self.test_alphas = np.linspace(center_alpha-3, center_alpha+3, num=60)
-        # self.number_hit_point = len(self.test_alphas)
-        # self.current_hit_point = 0
-        # if not self.replay_state:
-        #     self.current_hit_point = 0
-        #     self.hit_success.append([False]*self.number_hit_point)
-
+        self.draw_stuff["draw_hit_points"] = False
+        
         self.drawing_state = "start"
         if self.obs_type == "image" or not self.training:
             self.render()
 
         observation = self._get_obs()
-
         info = self._get_info()
-        # if self.obs_type == "image":
-            # plt.imshow(observation.reshape(self.height, self.width, 3))
-            # plt.show()
         return observation, info
 
     def step(self, action):
-        
-        # plt.show()
-        # print("\nnewstep\n")
-        # print("balls",[ball.body.position for ball in self.balls])
-        # print("ghost",self.ghost_balls)
-        # print(self.target_points)
-
+        self.steps_taken += 1
         self.window_vectors = []
         self.fakehits = []
 
         self.find_best_shot()
-        # print(f"Number of good hit_points: {len(self.good_vectors)}")
         self.n_hp.append(len(self.good_hit_points))
         
         self.number_hit_point = len(self.good_hit_points)
@@ -1426,56 +1157,31 @@ class PoolEnv(gym.Env):
         self.angle, self.force = action
 
 
-        if self.algorithm == "TD3":
-            if self.cheat_force: self.force = 1
+        if self.algorithm in ["TD3", "DDPG", "SAC"]:
+            if self.oracle: self.force = 1
 
             self.angle *= N_ANGLES / (2 * ANGLE_PRECISION)  # angle maps from [-1, 1] -> [-180, 180]
             self.force = (175 * self.force + 5) * ZOOM  # Force maps from [0, 1] -> [5, 180] * ZOOM
 
         else:
-            if self.cheat_force: self.force = FORCE-1
+            if self.oracle: self.force = FORCE-1
 
             self.angle = self.angle / ANGLE_PRECISION - 180
             self.force = (245/(FORCE-1) * self.force + 5) * ZOOM # Force will be mapped from [0, FORCE-1] -> [5, 180] * ZOOM
-            # 175, 245
-        # self.angle = np.degrees(np.arccos(np.dot(self.best_shot, np.array([1, 0]))))
-        # self.angle = np.degrees(self.return_angle(self.best_shot))
-        # self.angle = 1 / 3 * round(self.best_shot.angle_degrees / (1 / 3)) % 360
 
-        if self.cheat_angle:
+
+        if self.oracle:
             self.angle = self.best_shot.angle_degrees
 
-        if self.sigma != 0:
+        if self.sigma != 0.0:
             self.angle += np.random.normal(loc=0, scale=self.sigma)
 
-        # Test all hitpoints
-        # if (self.number_hit_point > 0) and self.test_all_hp:
-        #     if self.current_hit_point < (self.number_hit_point - 1):
-        #         self.angle = (self.good_hit_points[self.current_hit_point] - self.cue_ball.body.position).angle_degrees
-        #         # self.angle = self.test_alphas[self.current_hit_point]
-        #         # self.current_hit_point += 1
-        #         self.replay_state = True
-        #     else:
-        #         # self.current_hit_point += 1  # For the caption
-        #         self.angle = (self.good_hit_points[self.number_hit_point-1] - self.cue_ball.body.position).angle_degrees
-        #         # self.angle = self.test_alphas[self.current_hit_point]
-        #         self.replay_state = False
-
         self.reward = 0
-        # self.angle = 169.74
-        # self.force = 111.37910344
-        ## reset first_cue_contact
+
         self.ball_collision_handler.data["tracking"]["first_cue_contact"] = None
         self.pocket_collision_handler.data["tracking"]["first_cue_contact"] = None
         self.cushion_collision_handler.data["tracking"]["first_cue_contact"] = None
-        # self.tracking["first_cue_ball"] = None
-        # self.force = 50
-        # self.angle = [45, 45 + 90][np.random.randint(2, size=1)[0]]
 
-        # self.angle, self.force = 180, 1500
-        # self.steps_taken += 1
-        # self.total_steps += 1
-        # self.steps_pr_1000 += 1
         x_impulse = np.cos(np.radians(self.angle))
         y_impulse = np.sin(np.radians(self.angle))
         self.cue_shot_vec = Vec2d(self.force * x_impulse, self.force * y_impulse)
@@ -1486,7 +1192,7 @@ class PoolEnv(gym.Env):
         self.ball_tracking["init_velocity"][self.cue_ball.number] = self.cue_ball.body.velocity
         self.ball_tracking["calc_velocity"][self.cue_ball.number] = self.cue_ball.body.velocity
 
-        self.terminated = True
+        self.terminated = False
         self.truncated = False
         info = {}
 
@@ -1503,9 +1209,7 @@ class PoolEnv(gym.Env):
             else:
                 break
 
-
             # === SIMULATION === #
-            # self.ball_tracking["cue_pos"].append(self.cue_ball.body.position)
             if (frame_counter % 10_000) == 0:
                 print("HELP IM STUCK IN THE WHILE LOOP")
                 print(f"State: {self.random_state}")
@@ -1545,22 +1249,6 @@ class PoolEnv(gym.Env):
 
         # ========== WHILE LOOP END ========== #
 
-        # print("\nShot loop ended")
-        # print(f"Steps taken: \t{self.steps_taken}")
-        # If won
-        # if self.winning_condition_met():
-        #     # print('[w]',end=" ")
-        #     self.wins += 1
-        #     self.win_pr_1000 += 1
-        #     self.terminated = True
-        #     self.reward += 1
-        #     # self.total_reward += 1
-
-        # elif self.steps_taken >= NUM_SHOTS:
-        #     self.loses += 1
-        #     self.terminated = True
-
-        # self.find_windows()
         self.no_suits_left = (sum([ball.ballclass == self.suit for ball in self.balls]) == 0)
         if self.num_balls >= 2:
             if self.no_suits_left and (not self.tracking["cue_ball_pocketed"]):
@@ -1571,27 +1259,34 @@ class PoolEnv(gym.Env):
     
             elif (len(self.tracking["ball_pocketed"]) != 0):
                 pocketed_classes = [ball.ballclass for ball in self.tracking["ball_pocketed"]]
-                # Sort classes by importance (black > white > your suit > other)
-                pocketed_classes.sort(reverse=True)
+                # 4: black, 3: cue, 2: solid, 1: stripe
     
-                if pocketed_classes[0] == 4:
+                if 4 in pocketed_classes:
                     # Black was pocketed -> you loose the game
                     self.terminated = True
                     self.lost = True
-                elif pocketed_classes[0] == 3:
+                elif 3 in pocketed_classes:
                     # Cue was pocketed -> you miss your turn
                     self.terminated = True
                     if self.no_suits_left:
                         # If no suits left and cue ball pocketed -> you loose
                         self.lost = True
     
-                elif pocketed_classes[0] == self.suit:
-                    # Your suit was pocketed -> you gain another shot
+                elif self.enemy_suit in pocketed_classes:
+                    # Enemy suit was pocketed -> you miss your turn
+                    self.terminated = True
+                
+                else:
+                    # Only your suit was pocketed -> you get a turn
                     self.terminated = False
+                    self.steps_taken = 0
     
             else:
-                # Enemy suit was pocketed or none was -> you miss your turn
-                self.terminated = True
+                # No balls were pocketed -> you miss your turn if number of steps exceed maximum allowed number of shots
+                if self.steps_taken >= self.max_num_shots:
+                    self.terminated = True
+                else:
+                    self.terminated = False
         
         else:
             if self.tracking["cue_ball_pocketed"]:
@@ -1611,34 +1306,14 @@ class PoolEnv(gym.Env):
 
         self.observation = self._get_obs()
 
-        # if self.obs_type == "image":
-        #     cv2.imshow("im", self.observation)
-            # plt.show()
-
         self._get_reward()
         self.prev_reward = self.reward
-        # print(self.reward)
         self.stop_time = time.perf_counter()
 
-        if not self.replay_state:
-            self.steps_taken += 1
-            # self.total_steps += 1
-
         if (len(self.good_hit_points) == 0) and (not self.win) and (not self.tracking["cue_ball_pocketed"]):
-            # print(f"state: {self.random_state}")
-            # print(f"good_hit_points: {len(self.good_hit_points)}")
-            # print(f"win: {self.win}")
-            # print(self.tracking["cue_ball_pocketed"])
-            # print()
-            # self.failed_states.append(self.random_state)
             self.no_hitpoint_counter += 1
 
         self.cue_pocketed += self.tracking["cue_ball_pocketed"] and self.no_suits_left
-
-        # Test all hp
-        if self.test_all_hp:
-            if (len(self.hit_success[self.random_state]) != 0):
-                self.hit_success[self.random_state][self.current_hit_point] = self.no_suits_left
 
         if ((self.total_steps % 1000) == 0) and (self.total_steps != 0) and (self.truncated or self.terminated):
             timer = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(time.time()))
@@ -1651,30 +1326,18 @@ class PoolEnv(gym.Env):
             self.win_pr_1000 = 0
             self.no_hitpoint_counter = 0
             self.cue_pocketed = 0
-            if self.test_all_hp: self.close()
-            # self.close()
-            # print(f"Wins: \t{self.wins}\t {self.wins/self.total_steps*100}%")
 
         if self.truncated:
             print(f"Truncation has occured at state: {self.random_state}")
             # self.pretty_print_dict(self.get_attrs())
 
-        # if self.reward > 900:
-        #     print(self.get_attrs())
-        #     self.close()
-
-        # # Shift ball numbers down
+        # Shift ball numbers down
         for ball in self.tracking["ball_pocketed"]:
             number = ball.number
             for b in self.balls:
                 if b.number >= number:
                     b.number = b.number - 1
-        
-        # if (self.terminated and ((not self.win) or self.lost) ) and not self.Continue and not self.training: #and (self.current_hit_point < 1)
-        #     self.replay_state = True
 
-
-        # self.current_hit_point += 1
         
         for ball in self.tracking["ball_pocketed"]:
             self.prev_pocketed_balls.append(ball.ballclass)
@@ -1686,13 +1349,6 @@ class PoolEnv(gym.Env):
         self.reset_tracking()
         if self.terminated or self.truncated:
             self.total_steps += 1
-        # print(self.terminated or self.truncated)
-        # print(self.total_steps)
-        # print(self.tracking["first_cue_contact"])
-        # print(f"Terminated: \t{self.terminated}")
-        # print(f"Truncated:  \t{self.truncated}")
-        # print(f"observation: \t{observation}")
-        # self.plot_parms()
 
         return self.observation, self.reward, self.terminated, self.truncated, info
 
@@ -1755,11 +1411,6 @@ class PoolEnv(gym.Env):
             else:
                 color = SHOTCOLOR
 
-            # self.screen.fill(RED, (pos, (5*ZOOM,5*ZOOM)))
-
-            # vec = self.ball_tracking["start_positions"][self.target_ball.number] - pos
-            # start = pos
-            # end = pos + vec*100*ZOOM
             start = self.ball_tracking["start_positions"][self.cue_ball.number]
             end = pos
             if pos == self.draw_stuff["hit_points_best"]:
@@ -1798,44 +1449,13 @@ class PoolEnv(gym.Env):
                 pygame.draw.line(self.screen, trashcol,
                                   line[0], line[1], width=int(2 * ZOOM))
 
-                # text = font.render(str(i), True, INTERUPTEDCOLOR)
-                # self.screen.blit(text, line[1])
-
-        # Target points
-        # for count,pos in enumerate(self.target_points):
-        #     pygame.draw.circle(self.screen, CYAN, pos, 4*ZOOM)
-
-            # font = pygame.font.SysFont('didot.ttc', 20)
-            # text = font.render(str(self.pocket_ids[count]), True, RED)
-            # self.screen.blit(text, (pos[0]+2*BALL_RADIUS,pos[1]+5*BALL_RADIUS))
-
-        # Cushion Corners
-        # for count,positions in enumerate(self.cushion_corners):
-        #     for pos in positions:
-        #         pygame.draw.circle(self.screen, YELLOW, pos, 4*ZOOM)
-
-                # font = pygame.font.SysFont('didot.ttc', 20)
-                # text = font.render(str(count), True, BLACK)
-                # self.screen.blit(text, (pos[0]+2*BALL_RADIUS,pos[1]+5*BALL_RADIUS))
-
-        # Draw windows
-
 
         txts = [[0] for _ in self.target_points]
 
-        # print(self.pocket_value_counter)
         if VIEW_MIRRORS:
             for i,vecset in enumerate(self.window_vectors):
-                # ball, vec1, vec2, windowsize
-                # pygame.draw.line(self.screen, BLACK, vecset[0], vecset[1], width=int(3 * ZOOM))
-                # pygame.draw.line(self.screen, BLACK, vecset[0], vecset[2], width=int(3 * ZOOM))
-
                 font = pygame.font.SysFont('didot.ttc', 28)
 
-                # Pocket ids
-                # text = font.render("{:.2f}".format(vecset[3]), True, RED)
-                # self.screen.blit(text, vecset[1])
-                # prod_scores = np.prod(self.scores[i][:3])
                 if len(self.scores) == len(self.window_vectors):
                     prod_scores = self.scores[i][-1]
 
@@ -1853,6 +1473,7 @@ class PoolEnv(gym.Env):
             font = pygame.font.SysFont('didot.ttc', 40)
             text = font.render("Replay", True, RED)
             self.screen.blit(text, (LOWER_X,20))
+            
         if self.Continue:
             font = pygame.font.SysFont('didot.ttc', 40)
             text = font.render("Continue", True, RED)
@@ -1864,9 +1485,6 @@ class PoolEnv(gym.Env):
             vec = self.ball_tracking["init_velocity"][self.cue_ball.number]
             start = self.ball_tracking["start_positions"][self.cue_ball.number]
             end = start + vec * ZOOM * 2
-            # pygame.draw.line(self.screen, CYAN,
-            #                   start, end, width=int(1 * ZOOM))
-
             
         if self.bank_shots:
             for i in range(4):
@@ -1883,18 +1501,12 @@ class PoolEnv(gym.Env):
 
         # Draw collision points
         for cp_pair, dist in zip(self.tracking["contact_point"], self.tracking["contact_point_dist"]):
-            # print(cp_pair)
             for i, pos in enumerate(cp_pair):
-                # self.screen.fill(BLUE, (pos, (5 * ZOOM, 5 * ZOOM)))
-                # pygame.draw.circle(self.screen, (255, 153, 255), pos, 3)
-
                 if i == 0:
                     font = pygame.font.SysFont('didot.ttc', 20)
                     text = font.render(str(round(dist, 2)), True, RED)
-                    # self.screen.blit(text, (pos[0]+3*BALL_RADIUS,pos[1]+1*BALL_RADIUS))
 
         # Track balls position
-        # print(self.cue_ball.body.position.int_tuple)
         for i in range(len(self.ball_tracking["ball_pos"])):
 
             for pos in self.ball_tracking["ball_pos"][i]:
@@ -1905,17 +1517,6 @@ class PoolEnv(gym.Env):
                 elif self.ball_tracking["ball_classes"][i] == 3:
                     pygame.draw.circle(self.screen, WHITE, pos, 3)
 
-        # Draw normal vectors
-        # for i, vec in enumerate(self.tracking["normal_vectors"]):
-        #     # print(self.tracking["normal_vectors"])
-        #     # print(i)
-        #     # print(vec)
-        #     # print(self.tracking["contact_point"])
-        #     # print()
-        #     start = Vec2d(*np.mean(self.tracking["contact_point"][i],axis=0))
-        #     end = start -vec * ZOOM * 200
-        #     pygame.draw.line(self.screen, (255, 153, 255),
-        #                      start, end, width=int(3 * ZOOM))
 
         for i in range(len(self.ball_tracking["start_positions"])):
             start = self.ball_tracking["start_positions"][i]  # Vec2d
@@ -1923,14 +1524,6 @@ class PoolEnv(gym.Env):
             end2 = start + self.ball_tracking["calc_velocity"][i] # Vec2d
             ball_class = self.ball_tracking["ball_classes"][i]
 
-            # pygame.draw.line(self.screen, DRAW_SHOT_COLOR[ball_class - 1],
-            #                   start, end, width=int(3))
-
-            # if i != self.cue_ball.number:
-            #     pygame.draw.line(self.screen, BLACK,
-            #                       start, end2, width=int(2))
-
-            # self.screen.fill(SUIT_COLORS[ball_class - 1], (start, (10*ZOOM,10*ZOOM)))
             pygame.draw.circle(self.screen, SUIT_COLORS[ball_class - 1], start, BALL_RADIUS*1.3, width=int(1*ZOOM))
 
         
@@ -1938,19 +1531,9 @@ class PoolEnv(gym.Env):
         for h in self.fakehits:
             pygame.draw.line(self.screen, CYAN, h[0],h[1], width=int(1*ZOOM))
 
-
-
-
-
         #draw best line on top
         # bestline = None
         if bestline is not None:
-            # pygame.draw.line(self.screen, DRAW_SHOT_COLOR[ball_class - 1],
-            #                   bestline[0], bestline[1], width=int(3))
-            # pygame.draw.line(self.screen, DRAW_SHOT_COLOR[ball_class - 1],
-            #                   bestline[2], bestline[3], width=int(3))
-
-
             path1 = (bestline[0],bestline[1])
             path2 = (bestline[2],bestline[3])
 
@@ -1959,27 +1542,11 @@ class PoolEnv(gym.Env):
                     y = int(i>1)
                     
                     for path in [path1,path2]:
-                        dist1 = path[0][y] - line   # afstand fra x1 til line
-                        dist2 = path[1][y] - line   # afstand fra x2 til line
+                        dist1 = path[0][y] - line   # distance from x1 to line
+                        dist2 = path[1][y] - line   # distance from x2 to line
                         
                         show = sum([[c[y]<line, c[y]>line, c[y]>line, c[y]<line][i] for c in path])!=0
                         
-                        # if show:
-                        #     pygame.draw.line(self.screen, BESTSHOTCOLOR,
-                        #                           (path[0][0] - (not y) * 2*dist1, 
-                        #                             path[0][1] - y * 2*dist1),
-                                                  
-                        #                           (path[1][0] - (not y) * 2*dist2, 
-                        #                             path[1][1] - y * 2*dist2),
-                                                  
-                        #                           width=int(3))
-        
-        # pocketed_now = self.prev_pocketed_balls
-        # print(pocketed_now)
-        
-        # for ball in self.tracking["ball_pocketed"]:
-        #     pocketed_now.append(ball.ballclass)
-        
         # display pocketed balls
         blues = 0
         for i,ball in enumerate(self.prev_pocketed_balls + [ball.ballclass for ball in self.tracking["ball_pocketed"]]):
@@ -2021,16 +1588,7 @@ class PoolEnv(gym.Env):
             pygame.draw.circle(self.screen, SUIT_COLORS[ball_class - 1], start, BALL_RADIUS*1.3, width=int(1*ZOOM))
 
 
-            # a, b = self.tracking["contact_point"][0:2]
-            # start = a
-            # end = a + (b - a).normalized() * 100
-            # pygame.draw.line(self.screen, BLACK,
-            #                  start, end, width=int(3 * ZOOM))
-
     def redraw_screen(self):
-        # if WINDOW_MULTIPLIER != 1: 
-        # self.screen.fill(pygame.Color(TABLE_COLOR))
-        # else: 
         self.screen.fill(pygame.Color(BG_COLOR))
 
         pygame.draw.polygon(self.screen, TABLE_COLOR, TABLE_SPACE)
@@ -2044,11 +1602,9 @@ class PoolEnv(gym.Env):
         captionSUIT = f"Your suit: {SUIT_NAMES[self.suit-1]} ({SUIT_COLORS[self.suit-1]})" + sp
         captionREWARD = f"previous reward: {round(self.prev_reward,3)} " + sp
         captionSTATE= f"random_state_nr: {self.random_state}" + sp
-        if self.test_all_hp: captionHITPOINT = f"HitPoint: {self.current_hit_point}/{self.number_hit_point}" + sp
-        else: captionHITPOINT = ""
         if self.best_score: captionVALUE = f"HitPoint Value: {round(self.best_score,2)}" + sp
         else: captionVALUE = f"HitPoint Value: 0" + sp
-        caption = captionMAIN + captionSUIT + captionSTATE + captionREWARD + captionHITPOINT + captionVALUE
+        caption = captionMAIN + captionSUIT + captionSTATE + captionREWARD + captionVALUE
         pygame.display.set_caption(caption)
 
         pygame.display.flip()
@@ -2057,7 +1613,6 @@ class PoolEnv(gym.Env):
     def render(self):
         self.redraw_screen()
         self.process_events()
-        # print(self.balls[0].body.velocity)
 
     def get_attrs(self):
         def get_balls(x):
@@ -2074,9 +1629,6 @@ class PoolEnv(gym.Env):
         return {
             "balls_attrs": [get_balls(x) for x in self.balls],
             "reward": copy(self.reward),
-            # "episodes": copy(self.episodes),
-            # "episode_reward": copy(self.episode_reward),
-            # "episode_steps": copy(self.episode_steps),
             "total_steps": copy(self.total_steps),
             "starting_time": copy(self.start_time),
             # "ball_tracking": copy(self.score_tracking),

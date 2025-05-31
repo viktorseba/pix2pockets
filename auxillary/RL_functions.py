@@ -81,6 +81,7 @@ def run_model(model, env_test, max_steps, render=True, deterministic=True, use_m
     rew = []
     first_step = True
     obs = env_test.reset()
+
     while steps < max_steps:
         if use_masking:
             action_masks = get_action_masks(env_test)
