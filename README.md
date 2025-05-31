@@ -7,6 +7,17 @@ The dataset for the project is available on roboflow:
 ```shell
 https://universe.roboflow.com/bachelorthesis/8-ball-pool-l530o
 ```
+Additionally, a separate smaller dataset contains tables from multiple angles, used to calculate precision metrics. This dataset is found here
+```shell
+https://universe.roboflow.com/bachelorthesis/pool-doublecam
+```
+
+To download the dataset, a roboflow API key is required. To initialize this, create the file ```roboflow.json``` including the following line:
+```shell
+{
+    "ROBOFLOW_API_KEY": "Your_api_here"
+}
+```
 
 ## Project Demo
 The notebook ```pix2pockets_demo.ipynb``` contains a simple demo of the overall pipeline of the project and all implemented functionality.
