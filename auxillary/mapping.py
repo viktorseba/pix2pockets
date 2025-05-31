@@ -728,7 +728,7 @@ class HomographyMapping:
         
         rl_balls = np.zeros_like(self.ball_H)
         rl_balls[:, 0] = (self.ball_H[:, 0] - x_min) / (x_max - x_min)
-        rl_balls[:, 1] = 1.0 - (self.ball_H[:, 1] - y_min) / (y_max - y_min)  # mirror y
+        rl_balls[:, 1] = (self.ball_H[:, 1] - y_min) / (y_max - y_min)
         
         rl_balls = np.hstack((rl_balls, self.ball_classes[:, None]))
         
