@@ -10,9 +10,9 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.lines as mlines
 import matplotlib.gridspec as gridspec
-from yolo_code_that_we_use import *
+from auxillary.yolo_code_that_we_use import *
 from tqdm.notebook import tqdm
-from confusion_matrix_class import ConfusionMatrix
+from auxillary.confusion_matrix_class import ConfusionMatrix
 
 # from AUC
 # duplicate later
