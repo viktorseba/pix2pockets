@@ -23,97 +23,12 @@ import numpy as np
 from matplotlib.patches import Rectangle
 
 
-#%% Functions from @Mateen Ulhaq and @karlo
-def set_axes_equal(ax: plt.Axes):
-    """Set 3D plot axes to equal scale.
-
-    Make axes of 3D plot have equal scale so that spheres appear as
-    spheres and cubes as cubes.  Required since `ax.axis('equal')`
-    and `ax.set_aspect('equal')` don't work on 3D.
-    """
-    limits = np.array([
-        ax.get_xlim3d(),
-        ax.get_ylim3d(),
-        ax.get_zlim3d(),
-    ])
-    origin = np.mean(limits, axis=1)
-    radius = 0.5 * np.max(np.abs(limits[:, 1] - limits[:, 0]))
-    _set_axes_radius(ax, origin, radius)
-
-def _set_axes_radius(ax, origin, radius):
-    x, y, z = origin
-    ax.set_xlim3d([x - radius, x + radius])
-    ax.set_ylim3d([y - radius, y + radius])
-    ax.set_zlim3d([z - radius, z + radius])
-
-
 def PiInv(points):
     return np.vstack((points, np.ones(points.shape[1])))
 
 def Pi(points):
     return points[:-1]/points[-1]
 
-def projectpoints(K,R,t,Q):
-    rt = np.hstack((R,t))
-    Q = PiInv(Pi(Q))
-    return (K @ rt) @ Q
-def box3d(n=16):
-    points = []
-    N = tuple(np.linspace(-1,1,n))
-    for i,j in [(-1,-1), (-1,1), (1,1), (0,0)]:
-        points.extend(set(it.permutations([(i, )*n, (j, )*n, N])))
-    return np.hstack(points)/2
-
-
-
-def unnormalize_bbox(bbox, im_shape=(1080,1920)):
-    img_h = im_shape[0]
-    img_w = im_shape[1]
-    
-    #print(bbox)
-    xc, yc, wc, hc = bbox[1], bbox[2], bbox[3], bbox[4]
-    
-    w = wc*img_w
-    h = hc*img_h
-    
-    x = xc*img_w -w/2
-    y = yc*img_h -h/2
-    
-    return bbox[0],x,y,w,h
-
-def CrossOp(p):
-    """
-    p: inhomogenous 3D point
-    Anvende CrossOp operatoren for at lave en vektor om til en 
-    3x3 matrix der kan fungere som krydsprodukt med en anden vektor
-    """
-    p = np.array(p).reshape(3,1)
-    x = p[0][0]
-    y = p[1][0]
-    z = p[2][0]
-    return np.array([[0,-z,y],[z,0,-x],[-y,x,0]])
-
-def pest(Q,q):
-    """
-    Estimates the projection matrix from Q and q using
-    Direct Linear Transformation method.
-    Q (4xN): list of homogenous 3D points (real coordinates)
-    q (3xN): list of homogenous 2D points (pixel coordinates)
-    """
-    
-    B = []
-    for i in range(len(Q.T)):
-        Bi = np.kron( Q[:,i] , CrossOp( q[:,i]/q[-1,i] ) )
-    
-        if i == 0: B = Bi
-        else: B = np.vstack((B,Bi))
-    
-    u,s,vh = np.linalg.svd(B)
-    v = vh.T
-    P = v[:,-1] # last has smallest eigenvalues
-
-    P = P.reshape(4,3).T
-    return P
 
 def kronish(point):
     """
@@ -234,7 +149,7 @@ class HomographyMapping:
             try: 
                 model_robust, inliers = ransac(self.dot_Data, LineModelND, min_samples=2, residual_threshold=self.thres, max_trials=1000)
             except:
-                print('this should not happen, right??')
+                print('Something went wrong with ransac, returning None')
                 return None
 
             outliers = (inliers == False)
@@ -459,14 +374,14 @@ class HomographyMapping:
         # Apply the perspective transformation to the image
         self.warpedim = cv2.warpPerspective(self.im, self.H, (self.h*2,self.w*2))
         
-        tform = transform.ProjectiveTransform(self.H)
+        self.tform = transform.ProjectiveTransform(self.H)
         
         self.ball_centers = np.array([[b[0],b[1]] for b in self.ball_data])
         self.ball_classes = self.ball_data[:, -1] + 1
         
-        self.ball_H = tform(self.ball_centers)
+        self.ball_H = self.tform(self.ball_centers)
         
-        self.H_dots = np.array([tform(dots) for dots in self.found_points]).reshape(-1,2)
+        self.H_dots = np.array([self.tform(dots) for dots in self.found_points]).reshape(-1,2)
         
 
     def plot_lines(self, save=True):
@@ -835,37 +750,60 @@ class HomographyMapping:
         force = force / 29
         return np.array([angle, force])
 
-    def RL_predict(self, model, save=True):
-        image = self.warpedim
-
-        cue_ball = self.ball_H[self.ball_classes == 3].flatten()
+    def RL_predict(self, model, max_length=100, save=True):
 
         angle, force = self.get_action(model)
 
-        fig, ax = plt.subplots(1, 1, figsize=(12,12))
-        ax.imshow(image)
-        ax.axis('off')
-        
-        max_length = 100  # pxels
         length = force * max_length
         angle_rad = np.deg2rad(angle)
 
         dx = length * np.cos(angle_rad)
         dy = -length * np.sin(angle_rad)
 
-        ax.plot(*cue_ball, 'ro')
-        ax.arrow(*cue_ball, dx=dx, dy=dy, width=5, head_width=30, head_length=30, fc='blue', ec='black')
+        self.prediction = np.array([dx, dy])
+        return self.prediction
 
-        # Optional: axis settings
-        x1=min(self.H_dots[:,0])-20
-        x2=max(self.H_dots[:,0])+20
-        y1=min(self.H_dots[:,1])-20
-        y2=max(self.H_dots[:,1])+20 
+    def plot_RL_arrow(self, save=True, plot_warped=False):
         
-        ax.set_xlim(x1,x2) # see full table
-        ax.set_ylim(y1,y2)
+        cue_ball = self.ball_H[self.ball_classes == 3].flatten()
+        try: prediction = self.prediction
+        except AttributeError:
+            print("No prediction found. Run RL_predict first.")
+            return
 
-        ax.set_aspect('equal', adjustable='box')
+        end_point = cue_ball + prediction
+
+        fig, ax = plt.subplots(1, 1, figsize=(12,12))
+
+        if plot_warped:
+            cue_plot = cue_ball
+            end_plot = end_point
+            pred_plot = prediction
+            im_plot = self.warpedim
+
+            x1=min(self.H_dots[:,0])-20
+            x2=max(self.H_dots[:,0])+20
+            y1=min(self.H_dots[:,1])-20
+            y2=max(self.H_dots[:,1])+20 
+            
+            ax.set_xlim(x1,x2) # see full table
+            ax.set_ylim(y1,y2)
+
+            ax.set_aspect('equal', adjustable='box')
+
+        else:
+            cue_org = self.tform.inverse(cue_ball).flatten()
+            end_org = self.tform.inverse(end_point).flatten()
+            pred_org = end_org - cue_org
+
+            cue_plot = cue_org
+            end_plot = end_org
+            pred_plot = pred_org
+            im_plot = self.im
+
+        ax.imshow(im_plot)
+        ax.arrow(*cue_plot, dx=pred_plot[0], dy=pred_plot[1], width=5, head_width=30, head_length=30, fc='white', ec='white')
+        ax.axis('off')
 
         if save: 
             # if self.final_dist_error > 1:
