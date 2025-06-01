@@ -197,12 +197,3 @@ DRAW_SHOT_COLOR = [(255, 178, 102), (153, 204, 255), (255, 255, 153), (255, 153,
 BESTSHOTCOLOR = YELLOW
 SHOTCOLOR = BLACK
 INTERUPTEDCOLOR = RED
-
-#%%
-
-# for cc in CUSHION_CORNERS:
-#     c1, c2 = cc
-#     plt.scatter(*c1)
-#     plt.scatter(*c2)
-
-FAILED_STATES = [17, 148, 152, 443, 459, 778, 841, 844, 926, 927, 955]
