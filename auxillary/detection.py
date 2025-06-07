@@ -243,7 +243,7 @@ def compare_post_process(im, label, detection, detection_post, im_idx=None, data
             x,y,w,h = bb[:4]
             c = colors[int(bb[5])] + alpha
             class_count_det[int(bb[5])] += 1
-            axs[1][0].add_patch(patches.Rectangle((x,y),w,h,linestyle='-',linewidth=1,edgecolor=c,facecolor='none'))
+            axs[1][0].add_patch(patches.Rectangle((x-w/2,y-h/2),w,h,linestyle='-',linewidth=1,edgecolor=c,facecolor='none'))
         artist.append(mlines.Line2D([], [], color='k', linestyle='-', label=f'{title_names[1]}: {n_det}'))
     axs[1][0].set_title(title_names[1], fontsize=20)  
     
@@ -254,7 +254,7 @@ def compare_post_process(im, label, detection, detection_post, im_idx=None, data
             x,y,w,h = bb[:4]
             c = colors[int(bb[5])] + alpha
             class_count_post[int(bb[5])] += 1
-            axs[1][1].add_patch(patches.Rectangle((x,y),w,h,linestyle='-',linewidth=1,edgecolor=c,facecolor='none'))
+            axs[1][1].add_patch(patches.Rectangle((x-w/2,y-h/2),w,h,linestyle='-',linewidth=1,edgecolor=c,facecolor='none'))
         artist.append(mlines.Line2D([], [], color='k', linestyle='-', label=f'{title_names[2]}: {n_det_post}'))
     axs[1][1].set_title(title_names[2], fontsize=20)  
     
