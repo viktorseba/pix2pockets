@@ -4,7 +4,6 @@
 
 *.jpg
 *.log
-*.pt
 
 # Dataset directories
 Doublecam_dataset/
