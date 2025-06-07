@@ -305,7 +305,7 @@ class HomographyMapping:
         dot_list_n = [first,second,third,fourth]
         
         if [len(dot_list_n[i]) for i in range(4)] != [6,6,3,3]:
-            print('Error in dot count, using only corners for mapping')
+            print('Some dots are not visible, using only corners for mapping')
             self.usedots = False
 
         self.lineorder = [int(d[:,2][0]) for d in dot_list_n]
@@ -332,15 +332,20 @@ class HomographyMapping:
         ratio_3 = np.linalg.norm(self.intersections_sorted[0]-self.intersections_sorted[2],2)
         ratio_4 = np.linalg.norm(self.intersections_sorted[1]-self.intersections_sorted[3],2)
         
-        angleratio = ((ratio_1+ratio_2)/(ratio_3+ratio_4)) * 5
+        # TODO: angle ratio is not is the correct interval
+        angleratio = ((ratio_1+ratio_2)/(ratio_3+ratio_4))
+        print('ratios: {:.2f} {:.2f} {:.4f}'.format(ratio_1+ratio_2,ratio_3+ratio_4,angleratio))
+        print('viewtype:',self.viewtype)
+
+        # Shift y downward by ratio * half the height
+        y_adjusted = self.ball_data[:, 1] + (self.ball_data[:, 2] / 2) * angleratio
+        centers = np.stack((self.ball_data[:, 0], y_adjusted), axis=1)
         
-        # print('ratios: {:.2f} {:.2f} {:.4f}'.format(ratio_1+ratio_2,ratio_3+ratio_4,angleratio))
+
     #### New template
         Y = 790
         X = 1472
-
         Cy,Cx = (Y//2,X//2)
-
         #dots
         space = 163.5
         h1 = 372
