@@ -1,17 +1,17 @@
 # Ignore large files
 *.npy
-*.zip
-
 *.jpg
 *.log
+
+# too large files
+PPO.zip
+PPO_masked.zip
+
 
 # Dataset directories
 Doublecam_dataset/
 dataset155/
 8-Ball-Pool-3/
-
-# Ignore model checkpoints
-RL_models/
 
 # Ignore system files
 .DS_Store
