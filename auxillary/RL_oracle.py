@@ -1,6 +1,8 @@
 import numpy as np
 from pymunk import Vec2d
 
+import matplotlib.pyplot as plt
+
 class Oracle():
     def __init__(self, suit=2):
         import auxillary.RL_config_env as cfg
@@ -30,6 +32,7 @@ class Oracle():
         self.cushion_corners = np.concatenate([cfg.CUSHION_CORNERS,extra_corners])
     
     def remap_to_env_size(self, obs):
+    
         obs = obs.reshape(-1, 3)
         
         new_obs = np.array([
@@ -60,9 +63,13 @@ class Oracle():
 
     
     def best_shot_criteria(self, best_vectors):
-        hit_vectors, pocket_id, ball_number = zip(*best_vectors)
+
+        # hit_vectors, pocket_id, ball_number = zip(*best_vectors)
+        cue_pos,hit_pos,ball_pos,pocket_pos, pocket_id, ball_number = zip(*best_vectors)
+        
         scores = []
         self.scores = []
+        ballpos = []
 
         for i in range(len(best_vectors)):
 
@@ -82,11 +89,11 @@ class Oracle():
             cus2 = Vec2d(*self.cushion_corners[pocket_id[i]][1])
 
             if ball_number[i] < 100:
-                ballpos = self.obs[ball_number[i]][:2]
+                ballpos.append(self.obs[ball_number[i]][:2])
             else:
-                ballpos = self.ghost_balls[(ball_number[i] // 100) - 1]
-            a1 = cus1 - ballpos
-            a2 = cus2 - ballpos
+                ballpos.append(self.ghost_balls[(ball_number[i] // 100) - 1])
+            a1 = cus1 - ballpos[i]
+            a2 = cus2 - ballpos[i]
 
             angle_between = abs(a1.get_angle_degrees_between(a2)) / 60
 
@@ -94,8 +101,8 @@ class Oracle():
             # self.window_vectors.append((ballpos,cus1,cus2,angle_between,pocket_id[i]))
 
             # Cosine_sim weight
-            hit_vec = hit_vectors[i].normalized()
-            poc_vec = (Vec2d(*self.target_points[pocket_id[i]]) - ballpos).normalized()
+            hit_vec = (hit_pos[i] - cue_pos[i]).normalized()
+            poc_vec = (Vec2d(*self.target_points[pocket_id[i]]) - ballpos[i]).normalized()
 
             cos_weight = hit_vec.dot(poc_vec)
 
@@ -104,7 +111,13 @@ class Oracle():
 
         best = np.argmax(scores)
         bestscore = np.max(scores)
-        return hit_vectors[best], best, bestscore
+
+        self.best_locations = [cue_pos[best],hit_pos[best],ball_pos[best],pocket_pos[best]]
+
+        # self.best_locations = ballpos[best]
+        # self.best_pocket_location = Vec2d(*self.target_points[pocket_id[best]])
+
+        return hit_pos[best]-cue_pos[best], best, bestscore
 
     def is_straight_line(self, main_pos, target_pos, exclude=[], include=[]):
         # Checks if there is an unobstructed line from main_pos to target_pos.
@@ -171,7 +184,10 @@ class Oracle():
     
     def predict(self, obs, deterministic=True):
 
+        # print('obs before', obs)
         self.obs = self.remap_to_env_size(obs)
+        # print('obs after', self.obs)
+
         # Find lines from balls to pockets
         good_vectors = []
         all_vectors = []
@@ -214,7 +230,8 @@ class Oracle():
                     theta = cue2hit_vector.get_angle_degrees_between(pocket_vec)
 
                     hit_points.append([Vec2d(*hit_pos), theta])  # Feasible hit_points
-                    all_vectors.append([hit_pos - cue_pos, i, ghostnum*100 + ball_number])
+                    # all_vectors.append([hit_pos - cue_pos, i, ghostnum*100 + ball_number])
+                    all_vectors.append([cue_pos, hit_pos,ball_pos,pocket_pos, i, ghostnum*100+ball_number])
                     if (theta > self.cfg.THETA_LIMIT) or (theta < -self.cfg.THETA_LIMIT):  # Bad pocket
                         continue
 
@@ -226,14 +243,14 @@ class Oracle():
                         if self.is_straight_line(cue_pos, hit_pos, exclude=[ball_pos]):
 
                             good_hit_points.append(Vec2d(*hit_pos))
-                            good_vectors.append([hit_pos - cue_pos, i, ghostnum*100 + ball_number])
+                            good_vectors.append([cue_pos, hit_pos,ball_pos,pocket_pos, i, ghostnum*100+ball_number])
 
         # ball for loop end
         if len(good_vectors) != 0:
             best_shot, best, best_score = self.best_shot_criteria(good_vectors)
-
         else:
             best_shot, best, best_score = self.best_shot_criteria(all_vectors)
         
+        self.good_vectores = good_vectors
         angle = best_shot.angle_degrees
         return np.array([angle, 1]), None  # Return also None to make compatible with sb3 model.predict method
