@@ -16,11 +16,13 @@ import cv2
 import math
 import sys
 from gymnasium import spaces
-from auxillary.RL_config_env import *
+# from auxillary.RL_config_env import *
 import matplotlib.pyplot as plt
 import time
 from copy import copy
 from typing import Literal, Union
+
+import auxillary.RL_config_env as cfg
 
 
 class PoolEnv(gym.Env):
@@ -100,8 +102,8 @@ class PoolEnv(gym.Env):
         self.scores = []
         self.best_score = 0
 
-        self.width = FULL_SCREEN_WIDTH
-        self.height = FULL_SCREEN_HEIGHT
+        self.width = cfg.FULL_SCREEN_WIDTH
+        self.height = cfg.FULL_SCREEN_HEIGHT
         self.num_balls = num_balls if balls_init is None else self.balls_init.shape[0]
         self.total_balls = 16
         self.draw_screen = (self.obs_type == "image") or not training
@@ -118,7 +120,7 @@ class PoolEnv(gym.Env):
         if self.algorithm in ["TD3", "DDPG", "SAC"]:
             self.action_space = spaces.Box(low=np.array([-1, 0]), high=np.array([1, 1]), shape=(2,))
         else:
-            self.action_space = spaces.MultiDiscrete([N_ANGLES, FORCE])
+            self.action_space = spaces.MultiDiscrete([cfg.N_ANGLES, cfg.FORCE])
 
         self.actions = [[0,0]] 
 
@@ -149,7 +151,7 @@ class PoolEnv(gym.Env):
         # pymunk space
         self.space = pymunk.Space()
         self.space.gravity = (0, 0)
-        self.space.damping = BALL_DAMPING_THRESHOLD  # 0.83
+        self.space.damping = cfg.BALL_DAMPING_THRESHOLD  # 0.83
         self.space.collision_slop = 0.5  # 0.5
         self.space.idle_speed_threshold = 5  # 5
         self.space.sleep_time_threshold = 1e-8  # 1e-8
@@ -203,27 +205,27 @@ class PoolEnv(gym.Env):
         if self.bank_shots:
             extra_targets = []
             extra_corners = []
-            for i,line in enumerate(CUSHION_INNER_LINES):
-                for k,target in enumerate(TARGET_POSITIONS):
+            for i,line in enumerate(cfg.CUSHION_INNER_LINES):
+                for k,target in enumerate(cfg.TARGET_POSITIONS):
                     dist = target[int(i>=2)] - line
-                    dist1 = CUSHION_CORNERS[k][0][int(i>=2)] - line
-                    dist2 = CUSHION_CORNERS[k][1][int(i>=2)] - line
-                    if dist > POCKET_RADIUS or dist < -POCKET_RADIUS:
+                    dist1 = cfg.CUSHION_CORNERS[k][0][int(i>=2)] - line
+                    dist2 = cfg.CUSHION_CORNERS[k][1][int(i>=2)] - line
+                    if dist > cfg.POCKET_RADIUS or dist < -cfg.POCKET_RADIUS:
                         self.pocket_ids.append(100*(i+1) + k)
                         if i < 2:
                             extra_targets.append([line-dist,target[1]])
-                            extra_corners.append([[line-dist1,CUSHION_CORNERS[k][0][1]],[line-dist2,CUSHION_CORNERS[k][1][1]]])
+                            extra_corners.append([[line-dist1,cfg.CUSHION_CORNERS[k][0][1]],[line-dist2,cfg.CUSHION_CORNERS[k][1][1]]])
                         else:
                             extra_targets.append([target[0],line-dist])
-                            extra_corners.append([[CUSHION_CORNERS[k][0][0],line-dist1],[CUSHION_CORNERS[k][1][0],line-dist2]])
+                            extra_corners.append([[cfg.CUSHION_CORNERS[k][0][0],line-dist1],[cfg.CUSHION_CORNERS[k][1][0],line-dist2]])
 
 
-            self.target_points = np.concatenate([TARGET_POSITIONS,extra_targets])
-            self.cushion_corners = np.concatenate([CUSHION_CORNERS,extra_corners])
+            self.target_points = np.concatenate([cfg.TARGET_POSITIONS,extra_targets])
+            self.cushion_corners = np.concatenate([cfg.CUSHION_CORNERS,extra_corners])
 
         else:
-            self.target_points = np.array([list(x) for x in TARGET_POSITIONS])
-            self.cushion_corners = np.array(CUSHION_CORNERS)
+            self.target_points = np.array([list(x) for x in cfg.TARGET_POSITIONS])
+            self.cushion_corners = np.array(cfg.CUSHION_CORNERS)
 
         self.window_vectors = []
         self.pocket_value_counter = np.zeros_like(self.target_points[:,0])
@@ -473,23 +475,23 @@ class PoolEnv(gym.Env):
                 self.random_state = self.special_state #389
 
         for i in range(self.num_balls):
-            intertia = pymunk.moment_for_circle(BALL_MASS, 0, BALL_RADIUS, offset=(0, 0))
-            ball_body = pymunk.Body(BALL_MASS, intertia)
+            intertia = pymunk.moment_for_circle(cfg.BALL_MASS, 0, cfg.BALL_RADIUS, offset=(0, 0))
+            ball_body = pymunk.Body(cfg.BALL_MASS, intertia)
 
             # initialize positions
             if self.balls_init is not None:
                 if len(self.balls_init.shape) == 2:
                     x, y = self.balls_init[i, :2]
-                    ball_body.position = [int((UPPER_X - LOWER_X - 2)*x + LOWER_X) + 1,
-                                          int((UPPER_Y - LOWER_Y - 2)*y + LOWER_Y) + 1
+                    ball_body.position = [int((cfg.UPPER_X - cfg.LOWER_X - 2)*x + cfg.LOWER_X) + 1,
+                                          int((cfg.UPPER_Y - cfg.LOWER_Y - 2)*y + cfg.LOWER_Y) + 1
                                           ]
                     ballclass = int(self.balls_init[i, 2])
 
                 # Below is used for multiple states
                 elif len(self.balls_init.shape) == 3:
                     x, y = self.balls_init[i, :2, self.random_state]
-                    ball_body.position = [int((UPPER_X - LOWER_X - 2)*x + LOWER_X) + 1,
-                                          int((UPPER_Y - LOWER_Y - 2)*y + LOWER_Y) + 1
+                    ball_body.position = [int((cfg.UPPER_X - cfg.LOWER_X - 2)*x + cfg.LOWER_X) + 1,
+                                          int((cfg.UPPER_Y - cfg.LOWER_Y - 2)*y + cfg.LOWER_Y) + 1
                                           ]
                     ballclass = int(self.balls_init[i, 2, self.random_state])
                 
@@ -498,8 +500,8 @@ class PoolEnv(gym.Env):
 
             else:
                 # Random position
-                new_ball_x = np.random.randint(LOWER_X, UPPER_X)
-                new_ball_y = np.random.randint(LOWER_Y, UPPER_Y)
+                new_ball_x = np.random.randint(cfg.LOWER_X, cfg.UPPER_X)
+                new_ball_y = np.random.randint(cfg.LOWER_Y, cfg.UPPER_Y)
                 overlap = True
 
                 while positions and overlap:  # While other balls and overlap
@@ -509,23 +511,23 @@ class PoolEnv(gym.Env):
                         # Calculate distance to every other ball
                         dist = np.sqrt((abs(new_ball_x - ball[0]))**2 + (abs(new_ball_y - ball[1]))**2)
 
-                        if dist <= 2* BALL_RADIUS:
+                        if dist <= 2* cfg.BALL_RADIUS:
                             # If overlap, try again
-                            new_ball_x = np.random.randint(LOWER_X, UPPER_X)
-                            new_ball_y = np.random.randint(LOWER_Y, UPPER_Y)
+                            new_ball_x = np.random.randint(cfg.LOWER_X, cfg.UPPER_X)
+                            new_ball_y = np.random.randint(cfg.LOWER_Y, cfg.UPPER_Y)
                             overlap = True
                             break
                 # if no overlap, new ball position is valid
                 ball_body.position = [new_ball_x, new_ball_y]
                 ballclass = ball_classes[i]
 
-            ball = pymunk.Circle(ball_body, BALL_RADIUS, offset=(0, 0))
-            ball.elasticity = BALL_ELASTICITY
-            ball.friction = BALL_FRICTION
+            ball = pymunk.Circle(ball_body, cfg.BALL_RADIUS, offset=(0, 0))
+            ball.elasticity = cfg.BALL_ELASTICITY
+            ball.friction = cfg.BALL_FRICTION
             ball.collision_type = 1
             ball.ballclass = ballclass
 
-            ball.color = pygame.Color(SUIT_COLORS[ballclass-1])
+            ball.color = pygame.Color(cfg.SUIT_COLORS[ballclass-1])
             if ballclass == 3:
                 ball.number = self.num_balls - 1  # Cue ball be the last ball
                 self.cue_ball = ball
@@ -545,19 +547,19 @@ class PoolEnv(gym.Env):
         static_body = self.space.static_body
 
         self.cushions = []
-        for cushion_pos in CUSHION_POSITIONS:
+        for cushion_pos in cfg.CUSHION_POSITIONS:
             cushion = pymunk.Poly(static_body, cushion_pos)
-            cushion.color = pygame.Color(TABLE_SIDE_COLOR)
+            cushion.color = pygame.Color(cfg.TABLE_SIDE_COLOR)
             cushion.collision_type = 3
-            cushion.elasticity = CUSHION_ELASTICITY
-            cushion.friction = CUSHION_FRICTION
+            cushion.elasticity = cfg.CUSHION_ELASTICITY
+            cushion.friction = cfg.CUSHION_FRICTION
             self.cushions.append(cushion)
 
 
         self.pockets = []
-        for pocket_loc in POCKET_CENTERS:
-            pocket = pymunk.Circle(static_body, POCKET_RADIUS, pocket_loc)
-            pocket.color = pygame.Color(BLACK)
+        for pocket_loc in cfg.POCKET_CENTERS:
+            pocket = pymunk.Circle(static_body, cfg.POCKET_RADIUS, pocket_loc)
+            pocket.color = pygame.Color(cfg.BLACK)
             pocket.collision_type = 2
             pocket.elasticity = 0
             pocket.friction = 0
@@ -584,8 +586,8 @@ class PoolEnv(gym.Env):
             return img
 
         elif self.obs_type == "vector":
-            obs = np.array([[(ball.body.position[0] - LOWER_X) / (UPPER_X - LOWER_X),
-                             (ball.body.position[1] - LOWER_Y) / (UPPER_Y - LOWER_Y),
+            obs = np.array([[(ball.body.position[0] - cfg.LOWER_X) / (cfg.UPPER_X - cfg.LOWER_X),
+                             (ball.body.position[1] - cfg.LOWER_Y) / (cfg.UPPER_Y - cfg.LOWER_Y),
                              ball.ballclass / 4] for ball in self.balls])
 
             balls_to_fill = self.total_balls - len(self.balls)
@@ -660,7 +662,7 @@ class PoolEnv(gym.Env):
                 # Penalty = min dist from cue to balls of your suit
                 if sum([ball.ballclass == self.suit for ball in self.balls]) != 0:
                     dist = np.min([self.cue_ball.body.position.get_distance(ball.body.position) for ball in self.balls if ball.ballclass == self.suit])
-                    normdist = dist / DIAGONAL
+                    normdist = dist / cfg.DIAGONAL
                     self.rewardfunc = ['first_hit_none_cushion', normdist]
             else:
                 raise Exception("Wrong first_cue_contact key. Something went wrong.")
@@ -698,7 +700,7 @@ class PoolEnv(gym.Env):
 
             if not suit_hit:
                 dist = np.min([self.cue_ball.body.position.get_distance(ball.body.position) for ball in self.balls if ball.ballclass == self.suit])
-                normdist = dist / DIAGONAL
+                normdist = dist / cfg.DIAGONAL
                 self.rewardfunc = ['first_hit_none', normdist]
 
 
@@ -867,7 +869,7 @@ class PoolEnv(gym.Env):
                                       if ball.body.position not in exlist]).reshape(-1, 2)
             
             dists = [point_on_line_seg(exlist[0], exlist[1], ball) for ball in pos]
-            hit = sum([abs(d) <= (r * BALL_RADIUS) for d in dists]) > 0
+            hit = sum([abs(d) <= (r * cfg.BALL_RADIUS) for d in dists]) > 0
             return hit
 
         exlist = [main_pos, target_pos] + exclude        
@@ -901,9 +903,9 @@ class PoolEnv(gym.Env):
             ghosts = []
             ghost_opponents = []
             if self.bank_shots:
-                for i, line in enumerate(CUSHION_INNER_LINES):
+                for i, line in enumerate(cfg.CUSHION_INNER_LINES):
                     dist = real_ball_pos[int(i>=2)] - line
-                    if dist > BALL_RADIUS or dist < -BALL_RADIUS:
+                    if dist > cfg.BALL_RADIUS or dist < -cfg.BALL_RADIUS:
                         if i < 2:   coord = (line-dist,real_ball_pos[1])
                         else:       coord = (real_ball_pos[0],line-dist)
 
@@ -947,14 +949,14 @@ class PoolEnv(gym.Env):
 
                     # Calculate pos the cue should hit
                     pocket_vec = (pocket_pos - ball_pos).normalized()
-                    hit_pos = ball_pos - ((2 - 0) * BALL_RADIUS * pocket_vec)
+                    hit_pos = ball_pos - ((2 - 0) * cfg.BALL_RADIUS * pocket_vec)
 
                     cue2hit_vector = (hit_pos - cue_pos).normalized()
                     theta = cue2hit_vector.get_angle_degrees_between(pocket_vec)
 
                     self.hit_points.append([Vec2d(*hit_pos), theta])  # Feasible hit_points
                     all_vectors.append([hit_pos - cue_pos, i, ghostnum*100 + ball.number])
-                    if (theta > THETA_LIMIT) or (theta < -THETA_LIMIT):  # Bad pocket
+                    if (theta > cfg.THETA_LIMIT) or (theta < -cfg.THETA_LIMIT):  # Bad pocket
                         continue
 
 
@@ -991,7 +993,7 @@ class PoolEnv(gym.Env):
             ball_pos = self.ball_tracking["start_positions"][ball.number]
 
             ball_vector = ball_pos - cue_pos
-            ball_vector = 2 * BALL_RADIUS * ball_vector.normalized()
+            ball_vector = 2 * cfg.BALL_RADIUS * ball_vector.normalized()
             w1 = (ball_pos + ball_vector.rotated_degrees(90 + 5) - cue_pos).angle_degrees
             w2 = (ball_pos + ball_vector.rotated_degrees(-90 - 5) - cue_pos).angle_degrees
 
@@ -1009,7 +1011,7 @@ class PoolEnv(gym.Env):
         else:
             return None
 
-        for corners in CUSHION_CORNERS:
+        for corners in cfg.CUSHION_CORNERS:
             corner1, corner2 = corners
 
             pocket_target = Vec2d(*np.array([corner1, corner2]).mean(axis=0))
@@ -1018,8 +1020,8 @@ class PoolEnv(gym.Env):
             r2 = Vec2d(*(corner2 - pocket_target)).normalized()
 
             # Find points that lie on the line between corners and is 1 ball radius away from actual corner
-            r1 = corner1 - BALL_RADIUS * r1
-            r2 = corner2 - BALL_RADIUS * r2
+            r1 = corner1 - cfg.BALL_RADIUS * r1
+            r2 = corner2 - cfg.BALL_RADIUS * r2
 
             w1 = Vec2d(*(r1 - target_pos)).angle_degrees
             w2 = Vec2d(*(r2 - target_pos)).angle_degrees
@@ -1041,7 +1043,7 @@ class PoolEnv(gym.Env):
         # Go through all hit-points and ball centers and make those angles viable
         for vec in self.good_hit_points+ball_pos:
             hit_vec = vec - self.cue_ball.body.position
-            valid_shot = int(np.round((hit_vec.angle_degrees + 180)*ANGLE_PRECISION))
+            valid_shot = int(np.round((hit_vec.angle_degrees + 180) * cfg.ANGLE_PRECISION))
             
             mask[valid_shot] = True
         
@@ -1160,14 +1162,14 @@ class PoolEnv(gym.Env):
         if self.algorithm in ["TD3", "DDPG", "SAC"]:
             if self.oracle: self.force = 1
 
-            self.angle *= N_ANGLES / (2 * ANGLE_PRECISION)  # angle maps from [-1, 1] -> [-180, 180]
-            self.force = (175 * self.force + 5) * ZOOM  # Force maps from [0, 1] -> [5, 180] * ZOOM
+            self.angle *= cfg.N_ANGLES / (2 * cfg.ANGLE_PRECISION)  # angle maps from [-1, 1] -> [-180, 180]
+            self.force = (175 * self.force + 5) * cfg.ZOOM  # Force maps from [0, 1] -> [5, 180] * ZOOM
 
         else:
-            if self.oracle: self.force = FORCE-1
+            if self.oracle: self.force = cfg.FORCE-1
 
-            self.angle = self.angle / ANGLE_PRECISION - 180
-            self.force = (245/(FORCE-1) * self.force + 5) * ZOOM # Force will be mapped from [0, FORCE-1] -> [5, 180] * ZOOM
+            self.angle = self.angle / cfg.ANGLE_PRECISION - 180
+            self.force = (245/(cfg.FORCE-1) * self.force + 5) * cfg.ZOOM # Force will be mapped from [0, FORCE-1] -> [5, 180] * ZOOM
 
 
         if self.oracle:
@@ -1407,9 +1409,9 @@ class PoolEnv(gym.Env):
 
 
             if pos == self.draw_stuff["hit_points_best"]:
-                color = BESTSHOTCOLOR
+                color = cfg.BESTSHOTCOLOR
             else:
-                color = SHOTCOLOR
+                color = cfg.SHOTCOLOR
 
             start = self.ball_tracking["start_positions"][self.cue_ball.number]
             end = pos
@@ -1420,39 +1422,39 @@ class PoolEnv(gym.Env):
                             self.draw_stuff["hit_points_details"][num][1]]
 
             if self.view_lines:
-                pygame.draw.circle(self.screen, color, pos, 4*ZOOM)
+                pygame.draw.circle(self.screen, color, pos, 4 * cfg.ZOOM)
                 pygame.draw.line(self.screen, color,
-                                  start, end, width=int(2 * ZOOM))
+                                  start, end, width=int(2 * cfg.ZOOM))
                 pygame.draw.line(self.screen, color,
                                   self.draw_stuff["hit_points_details"][num][0],
-                                  self.draw_stuff["hit_points_details"][num][1], width=int(2 * ZOOM))
+                                  self.draw_stuff["hit_points_details"][num][1], width=int(2 * cfg.ZOOM))
 
         if self.view_lines:
             font = pygame.font.SysFont('didot.ttc', 20)
 
-            self.screen.blit(font.render("Best Shot", True, BESTSHOTCOLOR), (100,100))
-            self.screen.blit(font.render("Possible Shots", True, SHOTCOLOR), (100,120))
-            self.screen.blit(font.render("Interupted Shots", True, INTERUPTEDCOLOR), (100,140))
+            self.screen.blit(font.render("Best Shot", True, cfg.BESTSHOTCOLOR), (100,100))
+            self.screen.blit(font.render("Possible Shots", True, cfg.SHOTCOLOR), (100,120))
+            self.screen.blit(font.render("Interupted Shots", True, cfg.INTERUPTEDCOLOR), (100,140))
 
         # Trash lines
             for i,line in enumerate(self.trash_lines):
                 if line[2] == "ball":
-                    trashcol = RED
+                    trashcol = cfg.RED
                 elif line[2] == "ghost":
-                    trashcol = GRAY
+                    trashcol = cfg.GRAY
                 elif line[2] == "ghost_opp":
-                    trashcol = MAGENTA
+                    trashcol =cfg. MAGENTA
                 elif line[2] == "pocket":
-                    trashcol = CYAN
+                    trashcol = cfg.CYAN
                 elif line[2] == "cushion":
-                    trashcol = PURPLE
+                    trashcol = cfg.PURPLE
                 pygame.draw.line(self.screen, trashcol,
-                                  line[0], line[1], width=int(2 * ZOOM))
+                                  line[0], line[1], width=int(2 * cfg.ZOOM))
 
 
         txts = [[0] for _ in self.target_points]
 
-        if VIEW_MIRRORS:
+        if cfg.VIEW_MIRRORS:
             for i,vecset in enumerate(self.window_vectors):
                 font = pygame.font.SysFont('didot.ttc', 28)
 
@@ -1460,9 +1462,9 @@ class PoolEnv(gym.Env):
                     prod_scores = self.scores[i][-1]
 
                     if prod_scores == self.best_score:
-                        text = font.render("{0:.2f}".format(prod_scores), True, BESTSHOTCOLOR)
+                        text = font.render("{0:.2f}".format(prod_scores), True, cfg.BESTSHOTCOLOR)
                     else:
-                        text = font.render("{0:.2f}".format(prod_scores), True, BLACK)
+                        text = font.render("{0:.2f}".format(prod_scores), True, cfg.BLACK)
                     txts[vecset[4]].append([text,vecset[1]])
 
         for pock in txts:
@@ -1471,32 +1473,32 @@ class PoolEnv(gym.Env):
 
         if self.replay_state:
             font = pygame.font.SysFont('didot.ttc', 40)
-            text = font.render("Replay", True, RED)
-            self.screen.blit(text, (LOWER_X,20))
+            text = font.render("Replay", True, cfg.RED)
+            self.screen.blit(text, (cfg.LOWER_X,20))
             
         if self.Continue:
             font = pygame.font.SysFont('didot.ttc', 40)
-            text = font.render("Continue", True, RED)
-            self.screen.blit(text, (LOWER_X,20))
+            text = font.render("Continue", True, cfg.RED)
+            self.screen.blit(text, (cfg.LOWER_X,20))
 
 
         if self.drawing_state == "end":
             # Draw cue shot
             vec = self.ball_tracking["init_velocity"][self.cue_ball.number]
             start = self.ball_tracking["start_positions"][self.cue_ball.number]
-            end = start + vec * ZOOM * 2
+            end = start + vec * cfg.ZOOM * 2
             
         if self.bank_shots:
             for i in range(4):
-                if i < 2: pygame.draw.line(self.screen, TABLE_SIDE_COLOR, (CUSHION_INNER_LINES[i],0), (CUSHION_INNER_LINES[i],FULL_SCREEN_HEIGHT))
-                else: pygame.draw.line(self.screen, TABLE_SIDE_COLOR, (0,CUSHION_INNER_LINES[i]), (FULL_SCREEN_WIDTH,CUSHION_INNER_LINES[i]))
+                if i < 2: pygame.draw.line(self.screen, cfg.TABLE_SIDE_COLOR, (cfg.CUSHION_INNER_LINES[i],0), (cfg.CUSHION_INNER_LINES[i], cfg.FULL_SCREEN_HEIGHT))
+                else: pygame.draw.line(self.screen, cfg.TABLE_SIDE_COLOR, (0, cfg.CUSHION_INNER_LINES[i]), (cfg.FULL_SCREEN_WIDTH, cfg.CUSHION_INNER_LINES[i]))
 
-            if VIEW_MIRRORS:
+            if cfg.VIEW_MIRRORS:
                 for pos in self.ghost_balls:
-                    pygame.draw.circle(self.screen, YELLOW, pos, BALL_RADIUS)
+                    pygame.draw.circle(self.screen, cfg.YELLOW, pos, cfg.BALL_RADIUS)
 
                 for pos in self.ghost_opponents:
-                    pygame.draw.circle(self.screen, MAGENTA, pos, BALL_RADIUS)
+                    pygame.draw.circle(self.screen, cfg.MAGENTA, pos, cfg.BALL_RADIUS)
 
 
         # Draw collision points
@@ -1504,18 +1506,18 @@ class PoolEnv(gym.Env):
             for i, pos in enumerate(cp_pair):
                 if i == 0:
                     font = pygame.font.SysFont('didot.ttc', 20)
-                    text = font.render(str(round(dist, 2)), True, RED)
+                    text = font.render(str(round(dist, 2)), True, cfg.RED)
 
         # Track balls position
         for i in range(len(self.ball_tracking["ball_pos"])):
 
             for pos in self.ball_tracking["ball_pos"][i]:
                 if self.ball_tracking["ball_classes"][i] == self.suit:
-                    pygame.draw.circle(self.screen, BLUE, pos, 3)
+                    pygame.draw.circle(self.screen, cfg.BLUE, pos, 3)
                 elif self.ball_tracking["ball_classes"][i] == 1:
-                    pygame.draw.circle(self.screen, SOLID_COLOR, pos, 3)
+                    pygame.draw.circle(self.screen, cfg.SOLID_COLOR, pos, 3)
                 elif self.ball_tracking["ball_classes"][i] == 3:
-                    pygame.draw.circle(self.screen, WHITE, pos, 3)
+                    pygame.draw.circle(self.screen, cfg.WHITE, pos, 3)
 
 
         for i in range(len(self.ball_tracking["start_positions"])):
@@ -1524,12 +1526,12 @@ class PoolEnv(gym.Env):
             end2 = start + self.ball_tracking["calc_velocity"][i] # Vec2d
             ball_class = self.ball_tracking["ball_classes"][i]
 
-            pygame.draw.circle(self.screen, SUIT_COLORS[ball_class - 1], start, BALL_RADIUS*1.3, width=int(1*ZOOM))
+            pygame.draw.circle(self.screen, cfg.SUIT_COLORS[ball_class - 1], start, cfg.BALL_RADIUS*1.3, width=int(1 * cfg.ZOOM))
 
         
         # draw fake hitpoints
         for h in self.fakehits:
-            pygame.draw.line(self.screen, CYAN, h[0],h[1], width=int(1*ZOOM))
+            pygame.draw.line(self.screen, cfg.CYAN, h[0],h[1], width=int(1 * cfg.ZOOM))
 
         #draw best line on top
         # bestline = None
@@ -1538,7 +1540,7 @@ class PoolEnv(gym.Env):
             path2 = (bestline[2],bestline[3])
 
             if self.bank_shots:
-                for i, line in enumerate(CUSHION_INNER_LINES):
+                for i, line in enumerate(cfg.CUSHION_INNER_LINES):
                     y = int(i>1)
                     
                     for path in [path1,path2]:
@@ -1551,8 +1553,8 @@ class PoolEnv(gym.Env):
         blues = 0
         for i,ball in enumerate(self.prev_pocketed_balls + [ball.ballclass for ball in self.tracking["ball_pocketed"]]):
             blues += int(ball==2)
-            if ball==2 and blues > self.numblues: pygame.draw.circle(self.screen, BLACK, (LOWER_X+(3*BALL_RADIUS)*(i+1),UPPER_Y+(5*BALL_RADIUS)), BALL_RADIUS)
-            else: pygame.draw.circle(self.screen, SUIT_COLOR[ball], (LOWER_X+(3*BALL_RADIUS)*(i+1),UPPER_Y+(5*BALL_RADIUS)), BALL_RADIUS)
+            if ball==2 and blues > self.numblues: pygame.draw.circle(self.screen, cfg.BLACK, (cfg.LOWER_X+(3*cfg.BALL_RADIUS)*(i+1),cfg.UPPER_Y+(5*cfg.BALL_RADIUS)), cfg.BALL_RADIUS)
+            else: pygame.draw.circle(self.screen, cfg.SUIT_COLOR[ball], (cfg.LOWER_X+(3*cfg.BALL_RADIUS)*(i+1),cfg.UPPER_Y+(5*cfg.BALL_RADIUS)), cfg.BALL_RADIUS)
                 
 
     def draw_vectors(self):
@@ -1567,8 +1569,8 @@ class PoolEnv(gym.Env):
         # Draw collision points
         if self.tracking["ball_collision"]:
             for pos in self.tracking["contact_point"]:
-                self.screen.fill(BLUE, (pos, (5 * ZOOM, 5 * ZOOM)))
-                pygame.draw.circle(self.screen, YELLOW, pos, 2*ZOOM)
+                self.screen.fill(cfg.BLUE, (pos, (5 * cfg.ZOOM, 5 * cfg.ZOOM)))
+                pygame.draw.circle(self.screen, cfg.YELLOW, pos, 2*cfg.ZOOM)
 
         # Draw circle around balls + initial velocity
         for i in range(len(self.ball_tracking["start_positions"])):
@@ -1577,21 +1579,21 @@ class PoolEnv(gym.Env):
             end2 = start + self.ball_tracking["calc_velocity"][i] # Vec2d
             ball_class = self.ball_tracking["ball_classes"][i]
 
-            pygame.draw.line(self.screen, DRAW_SHOT_COLOR[ball_class - 1],
-                              start, end, width=int(3 * ZOOM))
+            pygame.draw.line(self.screen, cfg.DRAW_SHOT_COLOR[ball_class - 1],
+                              start, end, width=int(3 * cfg.ZOOM))
 
             if i != self.cue_ball.number:
-                pygame.draw.line(self.screen, BLACK,
-                                  start, end2, width=int(2 * ZOOM))
+                pygame.draw.line(self.screen, cfg.BLACK,
+                                  start, end2, width=int(2 * cfg.ZOOM))
 
             # self.screen.fill(SUIT_COLORS[ball_class - 1], (start, (10*ZOOM,10*ZOOM)))
-            pygame.draw.circle(self.screen, SUIT_COLORS[ball_class - 1], start, BALL_RADIUS*1.3, width=int(1*ZOOM))
+            pygame.draw.circle(self.screen, cfg.SUIT_COLORS[ball_class - 1], start, cfg.BALL_RADIUS*1.3, width=int(1*cfg.ZOOM))
 
 
     def redraw_screen(self):
-        self.screen.fill(pygame.Color(BG_COLOR))
+        self.screen.fill(pygame.Color(cfg.BG_COLOR))
 
-        pygame.draw.polygon(self.screen, TABLE_COLOR, TABLE_SPACE)
+        pygame.draw.polygon(self.screen, cfg.TABLE_COLOR, cfg.TABLE_SPACE)
 
         self.draw_state()
         self.space.debug_draw(self.draw_options)
@@ -1599,7 +1601,7 @@ class PoolEnv(gym.Env):
         sp = " "*5
 
         captionMAIN = f"Pool {sp} FPS: {self.fps} {sp} Algorithm: {self.algorithm}" + sp
-        captionSUIT = f"Your suit: {SUIT_NAMES[self.suit-1]} ({SUIT_COLORS[self.suit-1]})" + sp
+        captionSUIT = f"Your suit: {cfg.SUIT_NAMES[self.suit-1]} ({cfg.SUIT_COLORS[self.suit-1]})" + sp
         captionREWARD = f"previous reward: {round(self.prev_reward,3)} " + sp
         captionSTATE= f"random_state_nr: {self.random_state}" + sp
         if self.best_score: captionVALUE = f"HitPoint Value: {round(self.best_score,2)}" + sp
