@@ -106,10 +106,19 @@ def get_label(label_path, im_size):
     y = yc*img_h - h/2
     transformed_boxes = np.array([x,y,w,h]).T
     
+    roboflow_class_translator = {0: 3,
+                                 1: 2,
+                                 2: 4,
+                                 3: 1,
+                                 4: 0}
     #labels = np.array([int(x) for x in ground_truth[:,0]])
     ground_truth[:,1:] = transformed_boxes
     #ground_truth_new = np.vstack((labels,transformed_boxes))
-    ground_truth[:,0] = ground_truth[:,0].astype(int)
+    # ground_truth[:,0] = ground_truth[:,0].astype(int)
+    ground_truth[:,0] = [roboflow_class_translator[c] for c in ground_truth[:,0]]
+    
+    # 0: black 1: cue 2: dot 3: solid 4: stripe  FALSE
+    # 0: stripe 1: solid 2: cue 3: black 4 dot   TRUE
     return ground_truth
 
 # duplicate later

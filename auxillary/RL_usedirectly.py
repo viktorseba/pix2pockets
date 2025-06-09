@@ -3,6 +3,7 @@ from pymunk.vec2d import Vec2d
 import numpy as np
 
 from auxillary.RL_config_env import *
+from auxillary.RL_oracle import Oracle
 
 
 # from sb3_contrib.ppo_mask import MaskablePPO
@@ -14,6 +15,7 @@ def load_RL_no_env(model_path):
     elif algo == 'DDPG': model = DDPG.load(model_path)
     elif algo == 'SAC': model = SAC.load(model_path)
     elif algo == 'A2C': model = A2C.load(model_path)
+    elif algo == 'Oracle': model = Oracle(suit=2)
     # elif algo == 'PPO_masked': model = MaskablePPO.load(model_path)
     return model
 

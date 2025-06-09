@@ -751,9 +751,20 @@ class HomographyMapping:
         obs = self.get_observation()
         action, _states = model.predict(obs, deterministic=True)
         angle, force = action
-        angle = angle / 100 - 180
-        force = force / 29
-        return np.array([angle, force])
+        
+        model_name = model.__class__.__name__
+        if model_name in ["TD3", "DDPG", "SAC"]:
+            angle *= 36000 / (2 * 100)  # angle maps from [-1, 1] -> [-180, 180]
+
+        elif model_name in ["PPO", "A2C", "PPO_masked"]:
+            angle = angle / 100 - 180
+            force = force / 29
+        elif model_name == 'Oracle':
+            pass
+        else:
+            raise ValueError("No known model")
+        
+        return np.array([angle, force])  # angles [-180, 180], force [0, 1]
 
     def RL_predict(self, model, max_length=100, save=True):
 
