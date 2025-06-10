@@ -35,10 +35,18 @@ class Oracle():
     
         obs = obs.reshape(-1, 3)
         
+        low_x = 35 #15.014254458759154
+        upp_x = 1435 #1454.945080847856 
+        low_y = 22 #2.104819298208131 
+        upp_y = 768 #788.0868818035647
         new_obs = np.array([
             [
-            int((self.cfg.UPPER_X - self.cfg.LOWER_X - 2)*x + self.cfg.LOWER_X) + 1,
-            int((self.cfg.UPPER_Y - self.cfg.LOWER_Y - 2)*y + self.cfg.LOWER_Y) + 1,
+            # int(self.cfg.CENTER_W - self.cfg.TABLE_W/2 + x * self.cfg.TABLE_W),
+            # int(self.cfg.CENTER_H - self.cfg.TABLE_H/2 + y * self.cfg.TABLE_H),
+            # int((self.cfg.UPPER_X2 - self.cfg.LOWER_X2 - 2)*x + self.cfg.LOWER_X2) + 1,
+            # int((self.cfg.UPPER_Y2 - self.cfg.LOWER_Y2 - 2)*y + self.cfg.LOWER_Y2) + 1,
+            int((upp_x - low_x)*x + low_x),
+            int((upp_y - low_y)*y + low_y),
             int(c * 4)
             ] for x,y,c in obs if c != 0
         ])
@@ -196,7 +204,7 @@ class Oracle():
         good_hit_points = []
         force = 29
         
-        cue_pos = self.obs[self.obs[:, -1] == 3].flatten()[:2]
+        cue_pos = self.obs[self.obs[:, 2] == 3].flatten()[:2]
         assert cue_pos.size > 0, "Found no Cue ball. Can't make a prediction"
         cue_pos = Vec2d(*cue_pos)
         # cue_pos = cue_ball.body.position

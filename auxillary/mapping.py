@@ -762,7 +762,7 @@ class HomographyMapping:
             angle = angle / 100 - 180
             force = force / 29
         elif model_name == 'Oracle':
-            print(angle, force)
+            angle = -angle
         else:
             raise ValueError("No known model")
         
@@ -794,16 +794,17 @@ class HomographyMapping:
 
         fig, ax = plt.subplots(1, 1, figsize=(12,12))
 
-        cue_pos,hit_pos,ball_pos,pocket_pos = self.RL_model.best_locations
+        try: 
+            cue_pos,hit_pos,ball_pos,pocket_pos = self.RL_model.best_locations
+            oracle = True
+        except:
+            oracle = False
 
         if plot_warped:
             cue_plot = cue_ball
             end_plot = end_point
             pred_plot = prediction
             im_plot = self.warpedim
-
-            # ball_loc = self.RL_model.best_ball_location
-            # pocket_loc = self.RL_model.best_pocket_location
 
             x1=min(self.H_dots[:,0])-20
             x2=max(self.H_dots[:,0])+20
@@ -813,14 +814,12 @@ class HomographyMapping:
             ax.set_xlim(x1,x2) # see full table
             ax.set_ylim(y1,y2)
 
-            # ax.set_xlim(-1500,3000) # see full table
-            # ax.set_ylim(-1000,1500)
+            print(x1,x2,y1,y2)
             
-            for i in self.RL_model.obs:
-                ax.scatter(*i[0:2], s=50, color='r' if i[2] == 3 else 'b', alpha=0.5, label='observed balls')
+            # if oracle: 
+            #     for i in self.RL_model.obs:
+            #         ax.scatter(*i[0:2], s=50, color='r' if i[2] == 3 else 'b', alpha=0.5, label='observed balls')
 
-
-            # ax.scatter(self.RL_model.target_points[:,0], self.RL_model.target_points[:,1], s=50, color='r', label='target points')
             ax.set_aspect('equal', adjustable='box')
 
         else:
@@ -828,34 +827,42 @@ class HomographyMapping:
             end_plot = self.tform.inverse(end_point).flatten()
             pred_plot = end_plot - cue_plot
 
-            cue_pos = self.tform.inverse(cue_pos).flatten()
-            hit_pos = self.tform.inverse(hit_pos).flatten()
-            ball_pos = self.tform.inverse(ball_pos).flatten()
-            pocket_pos = self.tform.inverse(pocket_pos).flatten()
-
             im_plot = self.im
 
-            for i in self.RL_model.obs:
-                ax.scatter(*self.tform.inverse(i[0:2]).flatten(), s=50, color='r' if i[2] == 3 else 'b', alpha=0.5, label='observed balls')
+            if oracle:
+                cue_pos = self.tform.inverse(cue_pos).flatten()
+                hit_pos = self.tform.inverse(hit_pos).flatten()
+                ball_pos = self.tform.inverse(ball_pos).flatten()
+                pocket_pos = self.tform.inverse(pocket_pos).flatten()
+
+                # for i in self.RL_model.obs:
+                #     ax.scatter(*self.tform.inverse(i[0:2]).flatten(), s=50, color='r' if i[2] == 3 else 'b', alpha=0.5, label='observed balls')
+
+        
+        # test_points = np.array([[0,0,10],[0,1,10],[1,0,10],[1,1,10]]).flatten()
+        # test_points = self.RL_model.remap_to_env_size(test_points)
+        # ax.scatter(test_points[:, 0], test_points[:, 1], s=10, color='cyan', label='test points')
+        # ax.scatter(self.template_points[:, 0], self.template_points[:, 1], s=10, color='yellow', alpha=0.5, label='template points')
 
         ax.imshow(im_plot)
         ax.arrow(*cue_plot, dx=pred_plot[0], dy=pred_plot[1], width=5, head_width=30, head_length=30, fc='white', ec='white')
 
-        ax.scatter(ball_pos[0], ball_pos[1], alpha=0.5, s=10, color='yellow', label='cue ball')
-        ax.scatter(pocket_pos[0], pocket_pos[1], alpha=0.5, s=10, color='yellow', label='cue ball')
-        ax.scatter(cue_pos[0], cue_pos[1], alpha=0.5, s=10, color='orange', label='cue ball')
-        ax.scatter(hit_pos[0], hit_pos[1], alpha=0.5, s=10, color='magenta', label='cue ball')
-        
-        plt.plot([cue_pos[0], hit_pos[0]], [cue_pos[1], hit_pos[1]], linestyle='--', color='white', linewidth=2)
-        plt.plot([ball_pos[0], pocket_pos[0]], [ball_pos[1], pocket_pos[1]], linestyle='--', color='white', linewidth=2)
+        if oracle:
+            ax.scatter(ball_pos[0], ball_pos[1], alpha=0.5, s=10, color='yellow', label='cue ball')
+            ax.scatter(pocket_pos[0], pocket_pos[1], alpha=0.5, s=10, color='yellow', label='cue ball')
+            ax.scatter(cue_pos[0], cue_pos[1], alpha=0.5, s=10, color='orange', label='cue ball')
+            ax.scatter(hit_pos[0], hit_pos[1], alpha=0.5, s=10, color='magenta', label='cue ball')
+            
+            plt.plot([cue_pos[0], hit_pos[0]], [cue_pos[1], hit_pos[1]], linestyle='--', color='white', linewidth=2)
+            plt.plot([ball_pos[0], pocket_pos[0]], [ball_pos[1], pocket_pos[1]], linestyle='--', color='white', linewidth=2)
 
         ax.axis('off')
 
         if save: 
-            # if self.final_dist_error > 1:
-            #     self.savepath+='errors/'
             plt.savefig(self.savepath/f'predict_{self.viewtype}.png', bbox_inches='tight',dpi=200)
         
         plt.show()
         plt.close()
 
+
+# %%

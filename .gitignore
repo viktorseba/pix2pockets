@@ -7,6 +7,8 @@
 PPO.zip
 PPO_masked.zip
 
+# Export files
+plot_export/
 
 # Dataset directories
 Doublecam_dataset/
