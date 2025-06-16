@@ -73,11 +73,11 @@ class Oracle():
     def best_shot_criteria(self, best_vectors):
 
         # hit_vectors, pocket_id, ball_number = zip(*best_vectors)
-        cue_pos,hit_pos,ball_pos,pocket_pos, pocket_id, ball_number = zip(*best_vectors)
+        cue_pos, hit_pos, ball_pos, pocket_pos, pocket_id, ball_number = zip(*best_vectors)
         
         scores = []
         self.scores = []
-        ballpos = []
+        # ballpos = []
 
         for i in range(len(best_vectors)):
 
@@ -96,12 +96,14 @@ class Oracle():
             cus1 = Vec2d(*self.cushion_corners[pocket_id[i]][0])
             cus2 = Vec2d(*self.cushion_corners[pocket_id[i]][1])
 
-            if ball_number[i] < 100:
-                ballpos.append(self.obs[ball_number[i]][:2])
-            else:
-                ballpos.append(self.ghost_balls[(ball_number[i] // 100) - 1])
-            a1 = cus1 - ballpos[i]
-            a2 = cus2 - ballpos[i]
+            
+            # if ball_number[i] < 100:
+            #     try: ballpos.append(self.obs[ball_number[i]][:2])
+            #     except: continue
+            # else:
+            #     ballpos.append(self.ghost_balls[(ball_number[i] // 100) - 1])
+            a1 = cus1 - ball_pos[i]
+            a2 = cus2 - ball_pos[i]
 
             angle_between = abs(a1.get_angle_degrees_between(a2)) / 60
 
@@ -110,7 +112,7 @@ class Oracle():
 
             # Cosine_sim weight
             hit_vec = (hit_pos[i] - cue_pos[i]).normalized()
-            poc_vec = (Vec2d(*self.target_points[pocket_id[i]]) - ballpos[i]).normalized()
+            poc_vec = (Vec2d(*self.target_points[pocket_id[i]]) - ball_pos[i]).normalized()
 
             cos_weight = hit_vec.dot(poc_vec)
 
