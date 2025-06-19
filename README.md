@@ -6,17 +6,13 @@ This is the repo of the project ```pix2pockets``` created by Jonas Myhre Schiøt
 
 
 ## Download Dataset
-The dataset for the project is available on roboflow:
-```shell
-https://universe.roboflow.com/bachelorthesis/8-ball-pool-l530o
-```
-
-To download the dataset, a roboflow API key is required. To initialize this, create the file ```roboflow.json``` including the following line:
+Downloading the dataset is handled in the demo notebook. However, a roboflow API key is required. To initialize this, create the file ```roboflow.json``` including the following line:
 ```shell
 {
     "ROBOFLOW_API_KEY": "Your_api_here"
 }
 ```
+
 ## Requirements
 Requirements to run this project is found in ```requirements.txt```. Newer versions of pygame might not be able to show the environment simulation.
 
