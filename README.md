@@ -3,7 +3,7 @@
 This is the repo of the project ```pix2pockets``` 
 created by Jonas Myhre Schiøtt, Viktor Sebastian Petersen and Dim P. Papadopoulos.
 
-[pipelinefig.pdf](https://github.com/user-attachments/files/20819916/pipelinefig.pdf)
+![pipelinefig.pdf](https://github.com/user-attachments/files/20819916/pipelinefig.pdf)
 
 [[`Paper (SCIA 2025)`](https://arxiv.org/abs/2504.12045)] [[`Project page`](https://pix2pockets.compute.dtu.dk)]
 
