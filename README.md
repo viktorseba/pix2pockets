@@ -2,7 +2,7 @@
 
 This is the repo of the project ```pix2pockets``` created by Jonas Myhre Schiøtt, Viktor Sebastian Petersen and Dim P. Papadopoulos.
 
-[[`Paper (SCIA 2025)`](https://arxiv.org/abs/2504.12045)] [[`Project page`](https://pix2pockets.compute.dtu.dk)]
+[[`Paper (SCIA 2025)`](https://arxiv.org/abs/2504.12045)] [[`Project page`](https://pix2pockets.compute.dtu.dk)] [[`SCIA DEMO`](https://b70747239aefc8fd8b.gradio.live)]
 
 ![Image](https://github.com/user-attachments/assets/7be9d745-b990-42c6-90cf-4ffdd2aebb1e)
 
